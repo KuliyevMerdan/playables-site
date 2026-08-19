@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Jam Out — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#14181f; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(26px,6vw); font-weight:900; letter-spacing:4px; color:#ffd23f;
+    text-shadow:0 2px 0 #8a6200, 0 4px 12px rgba(0,0,0,.55); }
+  #lvl { margin-top:2px; font-size:12px; font-weight:700; letter-spacing:3px; color:#8d96a8; }
+  #goal { margin-top:6px; display:inline-flex; align-items:center; gap:8px; padding:5px 14px; border-radius:16px;
+    background:rgba(0,0,0,.32); color:#fff; font-weight:800; font-size:15px; transition:transform .12s; }
+  #goal .car { width:20px; height:12px; border-radius:4px 6px 6px 4px;
+    background:linear-gradient(180deg,#ff8a80 0%,#e8453c 55%,#a8231c 100%); box-shadow:inset -5px 0 0 rgba(255,255,255,.25); }
+  #goal.pop { transform:scale(1.25); }
+  /* stars live in the HUD, not on the canvas: the canvas bottom is the lane cars drive out through */
+  #stars { margin-top:5px; font-size:19px; letter-spacing:5px; color:#ffd23f; text-shadow:0 2px 6px rgba(0,0,0,.6); }
+  #stars .off { color:rgba(255,255,255,.17); text-shadow:none; }
+
+  /* landscape letterboxes the same scene, so the HUD has to shrink onto one line
+     or it lands on top of the lot */
+  @media (orientation:landscape) and (max-height:520px){
+    #hdr { top:calc(4px + env(safe-area-inset-top)); }
+    #title { font-size:20px; letter-spacing:3px; }
+    #lvl { font-size:10px; margin-top:0; }
+    #goal { margin-top:2px; padding:3px 11px; font-size:13px; }
+    #stars { display:inline-block; margin:0 0 0 9px; font-size:14px; letter-spacing:3px; vertical-align:middle; }
+  }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- Toast ---------- */
+  /* sits in the empty band between the HUD and the lot, never over the cars */
+  #toast { position:absolute; top:19%; left:0; right:0; text-align:center; font-size:min(38px,8.6vw); font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.55);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#ffd23f; } #toast.bad { color:#ff6b5e; } #toast.help { color:#5ad2ff; }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    background:radial-gradient(ellipse at 50% 30%, #2f3644 0%, #14171d 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:96px; height:96px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:linear-gradient(160deg,#ffe08a,#f0a020); box-shadow:0 10px 30px rgba(0,0,0,.55), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:min(30px,7vw); font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.45); }
+  #endStars { font-size:min(28px,6.5vw); letter-spacing:4px; color:#ffd23f; text-shadow:0 2px 8px rgba(0,0,0,.5); }
+  #end p  { color:#98a2b3; font-size:16px; margin-top:-4px; text-align:center; padding:0 34px; line-height:1.35; }
+  #cta { margin-top:6px; padding:18px 64px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#7d8797; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="hdr"><div id="title">JAM OUT</div><div id="lvl">LOT 1 / 3</div>
+  <div id="goal"><span class="car"></span><span id="goalTxt">0/5</span></div>
+  <div id="stars">★★★</div></div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="end">
+  <div class="icon">🚗</div>
+  <h1>Lot cleared!</h1>
+  <div id="endStars">★★★★★★★★★</div>
+  <p id="endSub">23 cars out of 3 jammed lots.</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Watch again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   JAM OUT — self-contained playable ad (parking-jam puzzle)
+   Scene designed in 720x1280 virtual units, letterbox-scaled to viewport.
+   All timing runs on sim time (S.time) so the whole game is headless-steppable
+   through window.__game.tick().
+
+   The puzzle: every car faces one way and drives straight out when tapped.
+   Cars never move otherwise, so "A blocks B" is a STATIC relation — a level is
+   solvable exactly when that dependency graph is a DAG. Lots 1-2 are DAGs;
+   lot 3 deliberately ends in a 2-car cycle (nose to nose) that the free crane
+   lift resolves, so the player meets a real dead end and is rescued from it.
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL:'https://apps.apple.com/app/id000000000',  // replace per campaign
+  accel:5600,            // px/s^2 — car pulling out
+  vmax:1500,             // px/s
+  followGap:170,         // px — a driving car brakes behind another one
+  fadeOut:170,           // px of travel the leaving car fades over, ending at the clip edge
+  towDelay:1.5,          // s with nothing removable -> free crane lift
+  towDrop:0.45,          // s — hook comes down
+  towLift:0.85,          // s — car goes up and away
+  idleHint:3.0,          // s idle -> tutorial hand
+  idleAuto:7.0,          // s idle -> the ad plays itself, so it always self-completes
+  autoStep:0.85,         // s between autopilot moves
+  winPause:1.8,          // s on the cleared lot before the next one
+  autoEnd:95,            // s -> force end card
+};
+
+/* ---------- tiny helpers ---------- */
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const rnd   = (a,b)=>a+Math.random()*(b-a);
+const ease  = t=>t*t*(3-2*t);
+const $ = id=>document.getElementById(id);
+const vibe = p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+
+/* =========================================================================
+   AUDIO — synthesized, no assets
+   ========================================================================= */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  start(){ this.tone(110,300,0.22,'sawtooth',0.085); this.tone(65,105,0.24,'square',0.05); },
+  honk(){  this.tone(392,392,0.20,'square',0.085); this.tone(494,494,0.20,'square',0.062);          // minor-third car horn
+           this.tone(392,392,0.15,'square',0.07,0.25); this.tone(494,494,0.15,'square',0.05,0.25); },
+  out(n){  const f=660*Math.pow(1.0595,Math.min(n,12)); this.tone(f,f,0.09,'sine',0.12); },          // pitch climbs per car
+  crane(){ [880,660].forEach((f,i)=>this.tone(f,f,0.12,'square',0.10,i*0.16));
+           this.tone(170,430,0.55,'triangle',0.07,0.30); },
+  win(){   [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.20,'triangle',0.18,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* =========================================================================
+   CTA / MRAID
+   ========================================================================= */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{
+  $('end').classList.remove('show');
+  S.totalOut=0; S.totalBumps=0; S.stars=0; S.towUsed=0; S.time=0; S.autoOn=false; loadLevel(0);
+});
+
+/* =========================================================================
+   RENDER SETUP — 720x1280 scene, letterboxed
+   ========================================================================= */
+const cv=$('game'), ctx=cv.getContext('2d');
+const SW=720, SH=1280;
+let vw=0, vh=0, dpr=1, scale=1, ox=0, oy=0;
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';   // fixed inset:0 alone won't size a canvas
+  scale=Math.min(vw/SW,vh/SH); ox=(vw-SW*scale)/2; oy=(vh-SH*scale)/2;
+}
+addEventListener('resize',resize); resize();
+const toScene = (px,py)=>[(px-ox)/scale, (py-oy)/scale];
+
+/* =========================================================================
+   BOARD — 6x6 lot of 100-unit bays
+   ========================================================================= */
+const GRID=6, CELL=100, BW=GRID*CELL;
+const BX=(SW-BW)/2, BY=340;                 // lot spans 60..660 x 340..940
+const DIRV={r:[1,0], l:[-1,0], u:[0,-1], d:[0,1]};
+const ANG ={r:0, d:Math.PI/2, l:Math.PI, u:-Math.PI/2};
+
+const CAR_COLORS = [
+  {body:'#e8453c', dark:'#8e1f19', hi:'#ff9d94'},   // red
+  {body:'#3d8bfd', dark:'#17457f', hi:'#a3caff'},   // blue
+  {body:'#f7b32b', dark:'#8f6206', hi:'#ffe3a2'},   // amber
+  {body:'#2fbf71', dark:'#0f6a3c', hi:'#a4f0c5'},   // green
+  {body:'#b06bf5', dark:'#5f2c99', hi:'#ddc0ff'},   // violet
+  {body:'#e9edf5', dark:'#8d95a4', hi:'#ffffff'},   // white
+  {body:'#ff7ab3', dark:'#a83368', hi:'#ffc7de'},   // pink
+  {body:'#3ac6d6', dark:'#116c7a', hi:'#a8ecf4'},   // teal
+];
+
+/* =========================================================================
+   LEVELS
+   car: {c,r,len,d}  — c,r = top-left bay, len = bays occupied,
+                       d = facing/exit direction ('l','r' horizontal, 'u','d' vertical)
+   A car leaves when every bay between it and the edge it faces is empty.
+   Invariant for lots 1-2: the blocks-graph must stay acyclic (see solver below;
+   __game.dag() verifies it). Lot 3 breaks it on purpose — see X/Y.
+   ========================================================================= */
+const LEVELS = [
+  { // LOT 1 — teach the loop. Everything is free except the two cars the
+    // blue van holds up, so the first honk (if any) is instantly explainable.
+    cars:[
+      {c:1,r:1,len:2,d:'r'},   // 0 blocked by 1
+      {c:4,r:0,len:2,d:'u'},   // 1 free — unlocks 0 and 4
+      {c:1,r:3,len:2,d:'l'},   // 2 free
+      {c:2,r:4,len:2,d:'d'},   // 3 free
+      {c:4,r:3,len:2,d:'u'},   // 4 blocked by 1
+    ],
+  },
+  { // LOT 2 — a real chain: 6 -> 5 -> 1 -> 0, plus a short side chain 4 -> 3.
+    cars:[
+      {c:0,r:1,len:2,d:'r'},   // 0 blocked by 1,2
+      {c:2,r:0,len:2,d:'d'},   // 1 blocked by 5,7
+      {c:4,r:1,len:2,d:'r'},   // 2 free
+      {c:5,r:2,len:2,d:'d'},   // 3 blocked by 4
+      {c:5,r:4,len:2,d:'d'},   // 4 free
+      {c:2,r:3,len:2,d:'l'},   // 5 blocked by 6
+      {c:0,r:3,len:2,d:'d'},   // 6 free
+      {c:1,r:5,len:3,d:'l'},   // 7 free — the long truck
+    ],
+  },
+  { // LOT 3 — busy lot that ends in a standoff: 3 and 4 face each other across
+    // one empty bay, so once the lot empties neither can move. That is what the
+    // crane exists for; it is the only way this lot finishes.
+    cars:[
+      {c:0,r:0,len:2,d:'u'},   // 0 free
+      {c:2,r:0,len:3,d:'r'},   // 1 free — truck
+      {c:5,r:1,len:2,d:'d'},   // 2 blocked by 9
+      {c:0,r:2,len:2,d:'r'},   // 3 blocked by 4 and 2   ┐ deadlock pair
+      {c:3,r:2,len:2,d:'l'},   // 4 blocked by 3         ┘
+      {c:1,r:3,len:2,d:'d'},   // 5 free
+      {c:0,r:4,len:2,d:'d'},   // 6 free
+      {c:2,r:4,len:2,d:'l'},   // 7 blocked by 5,6
+      {c:4,r:4,len:2,d:'d'},   // 8 free
+      {c:5,r:4,len:2,d:'d'},   // 9 free
+    ],
+  },
+];
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const S = {
+  mode:'play',            // play | clear | end
+  time:0, li:0,
+  cars:[], parts:[], timers:[],
+  total:0, out:0, totalOut:0,
+  bumps:0, totalBumps:0, stars:0, towUsed:0,
+  lastInput:0, lastAuto:0, autoOn:false, stuck:0, shake:0, handPh:0, tip:1,
+};
+function later(sec,fn){ S.timers.push({t:S.time+sec,fn}); }
+
+function loadLevel(i){
+  const L=LEVELS[i]; S.li=i;
+  S.cars = L.cars.map((d,id)=>({
+    id, c:d.c, r:d.r, len:d.len, d:d.d,
+    horiz: d.d==='l'||d.d==='r',
+    k: (d.k!==undefined?d.k:id) % CAR_COLORS.length,
+    state:'park',                       // park | drive | tow | gone
+    ox:0, oy:0, v:0, run:0, left:false,
+    bump:0, flash:0, tw:0, lift:0, alpha:1,
+  }));
+  S.parts=[]; S.timers=[];
+  S.total=S.cars.length; S.out=0; S.bumps=0; S.stuck=0; S.shake=0;
+  S.mode='play'; S.lastInput=S.time; S.lastAuto=S.time; S.handPh=0;
+  goalUpd(false); starsUpd();
+  $('end').classList.remove('show');
+  $('lvl').textContent=`LOT ${i+1} / ${LEVELS.length}`;
+}
+
+/* =========================================================================
+   PUZZLE MODEL — occupancy, exit path, blockers
+   Cars only ever leave, so blockers() is a static relation: no car can become
+   blocked by a move the player makes. That is what makes the ad unloseable.
+   ========================================================================= */
+function occupies(car,c,r){
+  return car.horiz ? (r===car.r && c>=car.c && c<car.c+car.len)
+                   : (c===car.c && r>=car.r && r<car.r+car.len);
+}
+function pathCells(car){
+  const a=[];
+  if(car.d==='r') for(let c=car.c+car.len;c<GRID;c++)  a.push([c,car.r]);
+  if(car.d==='l') for(let c=car.c-1;c>=0;c--)          a.push([c,car.r]);
+  if(car.d==='d') for(let r=car.r+car.len;r<GRID;r++)  a.push([car.c,r]);
+  if(car.d==='u') for(let r=car.r-1;r>=0;r--)          a.push([car.c,r]);
+  return a;
+}
+/** parked cars standing in this car's way (cars already driving out don't count) */
+function blockers(car){
+  const path=pathCells(car), out=[];
+  for(const o of S.cars){
+    if(o===car || o.state!=='park') continue;
+    if(path.some(p=>occupies(o,p[0],p[1]))) out.push(o);
+  }
+  return out;
+}
+const freeToGo = car=>car.state==='park' && blockers(car).length===0;
+/** how many other cars this one is holding up — drives the hint and crane picks */
+function unlocks(car){
+  let n=0;
+  for(const o of S.cars) if(o!==car && o.state==='park' && blockers(o).indexOf(car)>=0) n++;
+  return n;
+}
+
+/* ---------- scene-space geometry ---------- */
+function carBox(car){                      // parked footprint in scene units
+  const w = car.horiz ? car.len*CELL : CELL;
+  const h = car.horiz ? CELL : car.len*CELL;
+  return {x:BX+car.c*CELL, y:BY+car.r*CELL, w, h};
+}
+function carCenter(car){
+  const b=carBox(car);
+  return {x:b.x+b.w/2+car.ox, y:b.y+b.h/2+car.oy};
+}
+/** distance this car must travel before it is completely off the lot */
+function clearDist(car){
+  const b=carBox(car);
+  switch(car.d){
+    case 'r': return BX+BW-b.x;
+    case 'l': return b.x+b.w-BX;
+    case 'd': return BY+BW-b.y;
+    default : return b.y+b.h-BY;
+  }
+}
+/** cars are drawn inside CLIP only — it starts below the HUD and runs off every
+    other edge, so the lane a car drives out through is never a UI strip */
+const CLIP={x:-160, y:250, w:SW+320, h:SH-250};
+/** distance at which the car has left CLIP entirely, i.e. is safe to drop */
+function goneDist(car){
+  const b=carBox(car);
+  switch(car.d){
+    case 'r': return CLIP.x+CLIP.w-b.x;
+    case 'l': return b.x+b.w-CLIP.x;
+    case 'd': return CLIP.y+CLIP.h-b.y;
+    default : return b.y+b.h-CLIP.y;
+  }
+}
+/** gap to the nearest car driving ahead in the same lane, so they queue up */
+function gapAhead(car){
+  const [dx,dy]=DIRV[car.d], a=carCenter(car);
+  const halfA=(car.horiz===(dx!==0)? car.len*CELL : CELL)/2;
+  let best=1e9;
+  for(const o of S.cars){
+    if(o===car||o.state!=='drive') continue;
+    const b=carCenter(o);
+    const fwd=(b.x-a.x)*dx+(b.y-a.y)*dy;
+    const lat=Math.abs((b.x-a.x)*dy-(b.y-a.y)*dx);
+    if(fwd<=0 || lat>CELL*0.7) continue;
+    const halfB=(o.horiz===(dx!==0)? o.len*CELL : CELL)/2;
+    best=Math.min(best, fwd-halfA-halfB);
+  }
+  return best;
+}
+
+/* =========================================================================
+   ACTIONS
+   ========================================================================= */
+function carAt(sx,sy){
+  const c=Math.floor((sx-BX)/CELL), r=Math.floor((sy-BY)/CELL);
+  if(c<0||c>=GRID||r<0||r>=GRID) return null;
+  return S.cars.find(o=>o.state==='park' && occupies(o,c,r)) || null;
+}
+/** byUser=false is the autopilot: it must not count as input, or it would
+    switch itself off after the first move it makes */
+function tapCar(car,byUser){
+  if(!car || car.state!=='park' || S.mode!=='play') return false;
+  if(byUser!==false){ S.lastInput=S.time; S.handPh=0; }
+  const bl=blockers(car);
+  if(bl.length){                                  // honk — costs a star, never the run
+    car.bump=1; S.bumps++; S.totalBumps++; S.shake=Math.max(S.shake,5);
+    for(const b of bl) b.flash=1;
+    starsUpd(); Sfx.honk(); vibe([20,40,20]);
+    return false;
+  }
+  car.state='drive'; car.v=0; car.run=0; car.left=false;
+  S.out++; S.totalOut++; S.stuck=0; S.tip=0;
+  goalUpd(true); Sfx.start(); vibe(12);
+  const b=carCenter(car), [dx,dy]=DIRV[car.d];
+  smoke(b.x-dx*car.len*CELL*0.4, b.y-dy*car.len*CELL*0.4);
+  return true;
+}
+function craneLift(car){
+  car.state='tow'; car.tw=0; S.towUsed++;
+  S.out++; S.totalOut++; goalUpd(true);
+  Sfx.crane(); vibe([15,30,15]); toast('CRANE LIFT — FREE!','help');
+}
+/** the car worth lifting: one that actually frees somebody else */
+function craneTarget(){
+  const parked=S.cars.filter(c=>c.state==='park');
+  for(const c of parked){
+    for(const o of parked){
+      if(o===c) continue;
+      const b=blockers(o);
+      if(b.length===1 && b[0]===c) return c;      // lifting c hands the player a move
+    }
+  }
+  return parked[0]||null;
+}
+function hintCar(){
+  let best=null, bs=-1;
+  for(const c of S.cars){
+    if(!freeToGo(c)) continue;
+    const s=unlocks(c);
+    if(s>bs){ bs=s; best=c; }
+  }
+  return best;
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+function pointerDown(e){
+  Sfx.ensure(); S.lastInput=S.time; S.handPh=0; S.autoOn=false;   // player takes over
+  if(S.mode!=='play') return;
+  const p=toScene(e.clientX,e.clientY);
+  tapCar(carAt(p[0],p[1]));
+}
+cv.addEventListener('pointerdown',pointerDown);
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would break the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* =========================================================================
+   PARTICLES
+   ========================================================================= */
+function smoke(x,y){
+  for(let i=0;i<7;i++) S.parts.push({x:x+rnd(-14,14), y:y+rnd(-14,14), vx:rnd(-70,70), vy:rnd(-70,70),
+    life:rnd(.35,.7), age:0, color:'#cfd6e4', r:rnd(6,13), grav:-40, kind:'smoke'});
+}
+function burst(x,y,color,n){
+  for(let i=0;i<n;i++) S.parts.push({x,y,vx:rnd(-190,190),vy:rnd(-300,-70),
+    life:rnd(.4,.75),age:0,color,r:rnd(2,4.5),grav:700,kind:'dot'});
+}
+function confetti(x,y){
+  const cols=['#ffd23f','#42d76c','#ff6b9d','#5ad2ff','#ff9f43'];
+  for(let i=0;i<90;i++) S.parts.push({x:x+rnd(-60,60),y,vx:rnd(-380,380),vy:rnd(-780,-280),
+    life:rnd(.9,1.7),age:0,color:cols[i%cols.length],r:rnd(3,6),grav:950,rot:rnd(0,7),vr:rnd(-9,9),kind:'conf'});
+}
+function updateParts(dt){
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt;
+    if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+    if(p.kind==='smoke') p.r+=26*dt;
+    if(p.rot!==undefined) p.rot+=p.vr*dt;
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+function goalUpd(pop){
+  $('goalTxt').textContent=S.out+'/'+S.total;
+  if(pop){ const g=$('goal'); g.classList.remove('pop'); void g.offsetWidth; g.classList.add('pop'); }
+}
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  later(1.3,()=>t.classList.remove('show'));
+}
+/** a honk costs a star; the last one is never lost, so the lot always pays out */
+const levelStars = ()=> S.bumps===0 ? 3 : S.bumps<=2 ? 2 : 1;
+function starsUpd(){
+  const n=levelStars();
+  $('stars').innerHTML=[0,1,2].map(i=>i<n?'★':'<span class="off">★</span>').join('');
+}
+function levelCleared(){
+  const st=levelStars(); S.stars+=st;
+  S.mode='clear'; Sfx.win(); vibe([25,40,25]);
+  confetti(360,BY+BW/2);
+  toast('LOT CLEARED '+'★'.repeat(st),'good');
+  later(CONFIG.winPause,()=>{
+    if(S.li+1<LEVELS.length) loadLevel(S.li+1);
+    else showEnd();
+  });
+}
+function showEnd(){
+  S.mode='end';
+  const max=LEVELS.length*3;
+  $('endStars').textContent='★'.repeat(S.stars)+'☆'.repeat(Math.max(0,max-S.stars));
+  $('endSub').textContent = S.towUsed
+    ? `${S.totalOut} cars out of ${LEVELS.length} jammed lots — the crane had to bail you out ${S.towUsed>1?S.towUsed+' times':'once'}.`
+    : S.totalBumps
+      ? `${S.totalOut} cars out of ${LEVELS.length} jammed lots, ${S.totalBumps} horn${S.totalBumps>1?'s':''} along the way.`
+      : `${S.totalOut} cars, ${LEVELS.length} lots, not a single horn.`;
+  $('end').classList.add('show');
+}
+
+/* =========================================================================
+   UPDATE — everything on sim time
+   ========================================================================= */
+function update(dt){
+  S.time+=dt;
+
+  for(let i=S.timers.length-1;i>=0;i--){                    // sim-time scheduler
+    if(S.time>=S.timers[i].t){ const fn=S.timers[i].fn; S.timers.splice(i,1); fn(); }
+  }
+  if(S.mode==='end'){ updateParts(dt); return; }
+
+  // ---- cars ----
+  for(const car of S.cars){
+    if(car.bump>0)  car.bump =Math.max(0,car.bump -dt*2.2);
+    if(car.flash>0) car.flash=Math.max(0,car.flash-dt*1.6);
+
+    if(car.state==='drive'){
+      car.v=Math.min(CONFIG.vmax, car.v+CONFIG.accel*dt);
+      const gap=gapAhead(car);                              // brake behind traffic
+      if(gap<CONFIG.followGap) car.v=Math.min(car.v, CONFIG.vmax*clamp(gap/CONFIG.followGap,0,1));
+      car.run+=car.v*dt;
+      const dv=DIRV[car.d]; car.ox=dv[0]*car.run; car.oy=dv[1]*car.run;
+      const cd=clearDist(car), gd=goneDist(car);
+      if(!car.left && car.run>cd){ car.left=true; Sfx.out(S.out); }
+      car.alpha=clamp((gd-car.run)/CONFIG.fadeOut,0,1);
+      if(car.run>=gd) car.state='gone';
+
+    } else if(car.state==='tow'){
+      car.tw+=dt;
+      if(car.tw>CONFIG.towDrop){
+        const k=clamp((car.tw-CONFIG.towDrop)/CONFIG.towLift,0,1);
+        car.lift=k; car.oy=-ease(k)*(carBox(car).y+CELL*2+260);
+        car.alpha=1-clamp((k-0.72)/0.28,0,1);
+      }
+      if(car.tw>CONFIG.towDrop+CONFIG.towLift) car.state='gone';
+    }
+  }
+
+  if(S.shake>0) S.shake=Math.max(0,S.shake-dt*24);
+  if(S.tip>0 && S.out>0) S.tip=Math.max(0,S.tip-dt*2.5);
+  if(S.mode==='play' && S.time-S.lastInput>=CONFIG.idleHint) S.handPh+=dt;
+  updateParts(dt);
+
+  if(S.mode!=='play') return;
+
+  // ---- win ----
+  if(S.cars.every(c=>c.state==='gone')){ levelCleared(); return; }
+
+  // ---- ad-safety: left alone, the ad plays itself to the end card ----
+  // once engaged it stays engaged across lots — only a real tap takes over
+  if((S.autoOn || S.time-S.lastInput>CONFIG.idleAuto) && S.time-S.lastAuto>CONFIG.autoStep){
+    S.autoOn=true; S.lastAuto=S.time; tapCar(hintCar(),false);
+  }
+
+  // ---- ad-safety: a real dead end always gets a free crane lift ----
+  const moving=S.cars.some(c=>c.state==='drive'||c.state==='tow');
+  const parked=S.cars.filter(c=>c.state==='park');
+  if(!moving && parked.length && !parked.some(freeToGo)){
+    S.stuck+=dt;
+    if(S.stuck>CONFIG.towDelay){ S.stuck=0; const t=craneTarget(); if(t) craneLift(t); }
+  } else S.stuck=0;
+
+  if(S.time>CONFIG.autoEnd) showEnd();
+}
+
+/* =========================================================================
+   DRAWING
+   ========================================================================= */
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+/** rounded polygon (used for the tapered car body) */
+function pathPoly(pts,r){
+  const n=pts.length;
+  ctx.beginPath();
+  for(let i=0;i<n;i++){
+    const a=pts[i], b=pts[(i+1)%n], c=pts[(i+2)%n];
+    if(i===0) ctx.moveTo((a[0]+b[0])/2,(a[1]+b[1])/2);
+    ctx.arcTo(b[0],b[1],(b[0]+c[0])/2,(b[1]+c[1])/2,r);
+  }
+  ctx.closePath();
+}
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,vh);
+  g.addColorStop(0,'#252b36'); g.addColorStop(1,'#12151b');
+  ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+}
+/** asphalt lot: slab, painted bays, curb, exit chevrons on all four sides */
+function drawLot(){
+  ctx.fillStyle='rgba(0,0,0,.32)'; roundRect(BX-14,BY-8,BW+28,BW+30,30); ctx.fill();
+  const g=ctx.createLinearGradient(0,BY,0,BY+BW);
+  g.addColorStop(0,'#3a4150'); g.addColorStop(1,'#2a3040');
+  ctx.fillStyle=g; roundRect(BX,BY,BW,BW,24); ctx.fill();
+
+  ctx.save(); roundRect(BX,BY,BW,BW,24); ctx.clip();
+  ctx.strokeStyle='rgba(255,255,255,.10)'; ctx.lineWidth=3; ctx.setLineDash([16,14]);   // bay paint
+  for(let i=1;i<GRID;i++){
+    ctx.beginPath(); ctx.moveTo(BX+i*CELL,BY+6); ctx.lineTo(BX+i*CELL,BY+BW-6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(BX+6,BY+i*CELL); ctx.lineTo(BX+BW-6,BY+i*CELL); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.strokeStyle='rgba(0,0,0,.14)'; ctx.lineWidth=7; ctx.lineCap='round';              // skid marks
+  for(const s of [[0.12,0.66,0.5],[0.58,0.14,-0.3],[0.74,0.9,0.9]]){
+    const x=BX+BW*s[0], y=BY+BW*s[1], a=s[2];
+    for(const off of [-13,13]){
+      ctx.beginPath();
+      ctx.moveTo(x-Math.cos(a)*46-Math.sin(a)*off, y-Math.sin(a)*46+Math.cos(a)*off);
+      ctx.lineTo(x+Math.cos(a)*46-Math.sin(a)*off, y+Math.sin(a)*46+Math.cos(a)*off);
+      ctx.stroke();
+    }
+  }
+  ctx.lineCap='butt';
+  ctx.restore();
+
+  ctx.strokeStyle='rgba(255,255,255,.14)'; ctx.lineWidth=4; roundRect(BX,BY,BW,BW,24); ctx.stroke();
+
+  ctx.fillStyle='rgba(255,210,63,.34)';                                                 // way out
+  const chev=(x,y,a)=>{ ctx.save(); ctx.translate(x,y); ctx.rotate(a);
+    for(let i=0;i<2;i++){ ctx.beginPath(); ctx.moveTo(i*17-8,-15); ctx.lineTo(i*17+4,0); ctx.lineTo(i*17-8,15);
+      ctx.lineTo(i*17-2,0); ctx.closePath(); ctx.fill(); } ctx.restore(); };
+  chev(BX+BW+34,BY+BW/2,0); chev(BX-34,BY+BW/2,Math.PI);
+  chev(BX+BW/2,BY-34,-Math.PI/2); chev(BX+BW/2,BY+BW+34,Math.PI/2);
+}
+/** top-down vector car; length runs along local +x, nose at +x */
+function drawCar(car){
+  const col=CAR_COLORS[car.k];
+  const b=carBox(car), cx=b.x+b.w/2, cy=b.y+b.h/2;
+  const L=car.len*CELL-18, W=CELL-18, r=Math.min(W*0.30,20);
+  const nudge=car.bump>0?Math.sin(S.time*46)*9*car.bump:0;
+  const dv=DIRV[car.d];
+  const x=cx+car.ox+dv[0]*nudge, y=cy+car.oy+dv[1]*nudge;
+  const sc=1+car.lift*0.26;
+
+  ctx.save();
+  ctx.globalAlpha=car.alpha;
+
+  ctx.save();                                                    // ground shadow
+  ctx.translate(x, y+9+car.lift*26); ctx.rotate(ANG[car.d]); ctx.scale(sc,sc);
+  ctx.fillStyle=`rgba(0,0,0,${0.34-car.lift*0.16})`; roundRect(-L/2,-W/2,L,W,r); ctx.fill();
+  ctx.restore();
+
+  ctx.translate(x,y); ctx.rotate(ANG[car.d]); ctx.scale(sc,sc);
+
+  ctx.fillStyle='#12151c';                                       // wheels, poking out past the body
+  for(const wx of [-L*0.31, L*0.26]) for(const wy of [-1,1]){
+    roundRect(wx-13, wy<0 ? -W/2-4 : W/2-6, 26, 10, 4); ctx.fill();
+  }
+  // body tapers toward the nose (+x) — the direction cue that survives at thumb size
+  const body=[[L/2,-W*0.38],[L/2,W*0.38],[-L/2,W*0.50],[-L/2,-W*0.50]];
+  const g=ctx.createLinearGradient(0,-W/2,0,W/2);
+  g.addColorStop(0,col.hi); g.addColorStop(0.42,col.body); g.addColorStop(1,col.dark);
+  ctx.fillStyle=g; pathPoly(body,r); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.45)'; ctx.lineWidth=2.5; pathPoly(body,r); ctx.stroke();
+
+  const glass=ctx.createLinearGradient(0,-W/2,0,W/2);
+  glass.addColorStop(0,'#38404f'); glass.addColorStop(0.5,'#1b2029'); glass.addColorStop(1,'#2a313d');
+  if(car.len>=3){                                                // van: cab up front, cargo box behind
+    ctx.fillStyle='rgba(255,255,255,.15)'; roundRect(-L*0.46,-W*0.40,L*0.56,W*0.80,10); ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(-L*0.19,-W*0.40); ctx.lineTo(-L*0.19,W*0.40); ctx.stroke();
+    ctx.fillStyle=glass; pathPoly([[L*0.26,-W*0.24],[L*0.26,W*0.24],[L*0.13,W*0.34],[L*0.13,-W*0.34]],5); ctx.fill();
+  }else{                                                         // car: roof strip between two glasses
+    ctx.fillStyle='rgba(255,255,255,.17)'; roundRect(-L*0.20,-W*0.38,L*0.30,W*0.76,9); ctx.fill();
+    ctx.fillStyle=glass; pathPoly([[L*0.24,-W*0.24],[L*0.24,W*0.24],[L*0.09,W*0.34],[L*0.09,-W*0.34]],5); ctx.fill();
+    ctx.fillStyle=glass; pathPoly([[-L*0.22,-W*0.30],[-L*0.22,W*0.30],[-L*0.34,W*0.24],[-L*0.34,-W*0.24]],5); ctx.fill();
+  }
+  ctx.strokeStyle='rgba(255,255,255,.20)'; ctx.lineWidth=2;      // hood crease
+  ctx.beginPath(); ctx.moveTo(L*0.30,0); ctx.lineTo(L/2-8,0); ctx.stroke();
+
+  ctx.save();                                                    // headlights carry the facing
+  ctx.shadowColor='rgba(255,236,160,.9)'; ctx.shadowBlur=12; ctx.fillStyle='#fff6d0';
+  roundRect(L/2-11,-W*0.34,9,W*0.20,3); ctx.fill();
+  roundRect(L/2-11, W*0.14,9,W*0.20,3); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle='rgba(20,24,32,.75)'; roundRect(L/2-8,-W*0.11,6,W*0.22,2); ctx.fill();   // grille
+  ctx.fillStyle='#ff5348';                                       // tail lights
+  roundRect(-L/2+3,-W*0.40,5,W*0.18,2); ctx.fill();
+  roundRect(-L/2+3, W*0.22,5,W*0.18,2); ctx.fill();
+
+  if(car.flash>0){                                               // "this one is in your way"
+    ctx.strokeStyle=`rgba(255,90,80,${0.35+0.55*car.flash})`; ctx.lineWidth=5;
+    pathPoly(body.map(p=>[p[0]+Math.sign(p[0])*3, p[1]+Math.sign(p[1])*3]), r+3); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawCrane(car){
+  if(car.state!=='tow') return;
+  const c=carCenter(car);
+  const drop=clamp(car.tw/CONFIG.towDrop,0,1);          // comes down, then rides the car up
+  const hookY = -40+ease(drop)*c.y;
+  ctx.save();
+  ctx.strokeStyle='#c9d2e2'; ctx.lineWidth=4;
+  ctx.beginPath(); ctx.moveTo(c.x,-20); ctx.lineTo(c.x,hookY); ctx.stroke();
+  ctx.strokeStyle='#ffd23f'; ctx.lineWidth=6; ctx.lineCap='round';
+  ctx.beginPath(); ctx.arc(c.x,hookY+14,14,Math.PI*0.15,Math.PI*0.85,false); ctx.stroke();
+  ctx.restore();
+}
+function drawParts(){
+  for(const p of S.parts){
+    const a=1-p.age/p.life;
+    ctx.globalAlpha=p.kind==='smoke'?a*0.35:a;
+    ctx.fillStyle=p.color;
+    if(p.kind==='conf'){ ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r); ctx.restore(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+function drawHand(){
+  if(S.mode!=='play' || S.time-S.lastInput<CONFIG.idleHint) return;
+  const car=hintCar(); if(!car) return;
+  const c=carCenter(car), b=carBox(car);
+  const k=(Math.sin(S.handPh*5)+1)/2;
+  ctx.save();
+  ctx.globalAlpha=0.30+0.35*(1-k);
+  ctx.strokeStyle='#fff'; ctx.lineWidth=4;
+  roundRect(b.x+4-k*5, b.y+4-k*5, b.w-8+k*10, b.h-8+k*10, 18); ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.translate(c.x+24, c.y+42+k*10);
+  ctx.font='54px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=10;
+  ctx.fillText('👆',0,0);
+  ctx.restore();
+}
+function drawTip(){
+  if(S.li>0 || S.tip<=0) return;
+  ctx.save(); ctx.globalAlpha=S.tip*0.85;
+  ctx.fillStyle='#cfd6e4'; ctx.font='700 25px system-ui'; ctx.textAlign='center';
+  ctx.fillText('TAP A CAR TO DRIVE IT OUT', 360, 1085);
+  ctx.restore();
+}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);                 // draw in CSS px, sharp on retina
+  drawBG();
+  const sh=S.shake, shx=sh?rnd(-sh,sh)*scale:0, shy=sh?rnd(-sh,sh)*scale:0;
+  ctx.save(); ctx.translate(ox+shx,oy+shy); ctx.scale(scale,scale);
+  drawLot();
+  drawTip();                                         // under the cars: they drive over it
+  ctx.save();                                        // cars never spill into the HUD
+  ctx.beginPath(); ctx.rect(CLIP.x,CLIP.y,CLIP.w,CLIP.h); ctx.clip();
+  for(const c of S.cars) if(c.state==='park') drawCar(c);
+  for(const c of S.cars) if(c.state==='drive'||c.state==='tow') drawCar(c);
+  ctx.restore();
+  for(const c of S.cars) drawCrane(c);
+  drawParts();
+  drawHand();
+  ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt);
+  draw();
+}
+
+/* MRAID-aware start */
+function start(){ loadLevel(0); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* debug hooks — headless stepping, used for automated flow tests */
+window.__game={ S, CONFIG, LEVELS, load:loadLevel, hint:hintCar, blockers, unlocks, freeToGo,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); draw(); },
+  tap:i=>tapCar(S.cars.find(c=>c.id===i)),
+  tapAt:(x,y)=>tapCar(carAt(x,y)),
+  auto:()=>tapCar(hintCar(),false),                 // one optimal move, as the autopilot plays it
+  /** cycle check on the static blocks-graph: [] = solvable without the crane */
+  dag:(li=S.li)=>{
+    const cars=LEVELS[li].cars.map((d,id)=>({id,c:d.c,r:d.r,len:d.len,d:d.d,horiz:d.d==='l'||d.d==='r',state:'park'}));
+    const keep=S.cars; S.cars=cars;
+    const dep=cars.map(c=>blockers(c).map(b=>b.id));
+    S.cars=keep;
+    const seen=[], stack=[], cyc=[];
+    const walk=(i,path)=>{
+      if(stack[i]){ cyc.push(path.slice(path.indexOf(i))); return; }
+      if(seen[i]) return;
+      seen[i]=stack[i]=1;
+      for(const j of dep[i]) walk(j,path.concat(j));
+      stack[i]=0;
+    };
+    for(let i=0;i<cars.length;i++) walk(i,[i]);
+    return cyc;
+  },
+  end:showEnd };
+</script>
+</body>
+</html>

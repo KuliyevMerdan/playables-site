@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Sky Tower — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; touch-action:none; overscroll-behavior:none;
+    background:linear-gradient(180deg,#2b3f8a 0%,#1b1f52 55%,#0e0c28 100%);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game,#fx { position:fixed; inset:0; display:block; width:100%; height:100%; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(26px,6vw); font-weight:900; letter-spacing:2px; color:#ffd54a;
+    text-shadow:0 2px 0 #8a5a13, 0 4px 12px rgba(0,0,0,.5); }
+  #stats { margin-top:7px; display:flex; justify-content:center; gap:8px; }
+  .pill { padding:5px 14px; border-radius:16px; background:rgba(0,0,0,.3); color:#fff; font-weight:800; font-size:14px; }
+  #barWrap { position:relative; margin:8px auto 0; width:min(220px,56vw); height:16px; border-radius:9px;
+    background:rgba(0,0,0,.35); overflow:hidden; }
+  #bar { position:absolute; inset:0; width:0%; border-radius:9px; transition:width .35s ease;
+    background:linear-gradient(90deg,#ffd54a,#ff9f1a); }
+  #barLbl { position:absolute; inset:0; font-size:10px; font-weight:800; letter-spacing:1px; color:#fff;
+    display:flex; align-items:center; justify-content:center; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  #toast { position:absolute; top:38%; left:0; right:0; text-align:center; font-size:42px; font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.5);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#ffd54a; } #toast.bad { color:#ff6b5e; }
+
+  /* ---------- Tutorial hand ---------- */
+  #hand { position:fixed; left:50%; top:64%; transform:translateX(-50%); text-align:center; pointer-events:none;
+    opacity:0; transition:opacity .35s; }
+  #hand.show { opacity:1; }
+  #hand span { display:block; font-size:62px; filter:drop-shadow(0 4px 8px rgba(0,0,0,.5));
+    animation:tapAnim 1s ease-in-out infinite; }
+  #hand b { color:#fff; font-size:22px; letter-spacing:4px; text-shadow:0 2px 8px rgba(0,0,0,.7); }
+  @keyframes tapAnim { 0%,100%{transform:translateY(0) scale(1)} 40%{transform:translateY(14px) scale(.88)} }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background:radial-gradient(ellipse at 50% 30%, #2d3d7a 0%, #100e26 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:96px; height:96px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:linear-gradient(160deg,#ffd54a,#ff8a1a); box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:30px; font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.4); }
+  #end p  { color:#a9b3e0; font-size:16px; margin-top:-8px; }
+  #cta { padding:18px 64px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#8f88bd; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<canvas id="fx"></canvas>
+<div id="hud">
+  <div id="hdr">
+    <div id="title">SKY TOWER</div>
+    <div id="stats"><span class="pill" id="hP">HEIGHT 0</span></div>
+    <div id="barWrap"><div id="bar"></div><div id="barLbl">GOAL 12</div></div>
+  </div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="hand"><span>👆</span><b>TAP!</b></div>
+<div id="end">
+  <div class="icon">🏗</div>
+  <h1>Tower complete!</h1>
+  <p>Can you build even higher?</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Play again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   SKY TOWER — 3D stack playable ad, single self-contained file.
+   Rendering is raw WebGL (no libraries): one unit-cube mesh, ortho camera,
+   per-face lambert shading. All timing runs on accumulated sim-time inside
+   update(dt), so the whole game can be stepped headless via __game.tick.
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL: 'https://apps.apple.com/app/id000000000',   // replace per campaign
+  goal: 12,                 // blocks to stack for the win
+  baseSize: 2.2, blockH: 0.62,
+  amp: 2.4,                 // slide amplitude (world units)
+  spd0: 2.2, spdInc: 0.12, spdMax: 3.6,   // rad/s of the sine slide
+  perfectTol: 0.16,         // |offset| under this snaps as PERFECT
+  growPerfect: 0.25,        // width regained on a perfect drop
+  regrow: 0.15,             // ad-friendly: width regained on every drop
+  minSize: 0.6,             // block never shrinks below this
+  autoEnd: 75,              // seconds until forced end card
+};
+
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const $=id=>document.getElementById(id);
+const vibe=p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+
+/* ========================= AUDIO (synth, no assets) ====================== */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  place(){ this.tone(170,120,0.08,'square',0.16); this.tone(90,70,0.1,'sine',0.2,0.005); },
+  slice(){ this.tone(430,180,0.09,'sawtooth',0.11,0.01); },
+  perfect(n){ const f=660*Math.pow(1.05946,Math.min(n,14));
+    this.tone(f,f,0.13,'triangle',0.22); this.tone(f*1.5,f*1.5,0.16,'sine',0.11,0.03); },
+  miss(){ this.tone(220,110,0.35,'sawtooth',0.2); this.tone(180,90,0.45,'square',0.1,0.06); },
+  win(){ [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.18,'triangle',0.2,i*0.08)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* ========================= CTA / MRAID =================================== */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{ $('end').classList.remove('show'); newGame(); });
+
+/* ========================= TINY MAT4 ===================================== */
+function mul(a,b){                                 // column-major a*b
+  const o=new Float32Array(16);
+  for(let c=0;c<4;c++) for(let r=0;r<4;r++)
+    o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];
+  return o;
+}
+function ortho(l,r,b,t,n,f){
+  return new Float32Array([2/(r-l),0,0,0, 0,2/(t-b),0,0, 0,0,-2/(f-n),0,
+    -(r+l)/(r-l),-(t+b)/(t-b),-(f+n)/(f-n),1]);
+}
+function lookAt(e,c,u){
+  let fx=c[0]-e[0],fy=c[1]-e[1],fz=c[2]-e[2];
+  const fl=Math.hypot(fx,fy,fz); fx/=fl; fy/=fl; fz/=fl;
+  let sx=fy*u[2]-fz*u[1], sy=fz*u[0]-fx*u[2], sz=fx*u[1]-fy*u[0];
+  const sl=Math.hypot(sx,sy,sz); sx/=sl; sy/=sl; sz/=sl;
+  const ux=sy*fz-sz*fy, uy=sz*fx-sx*fz, uz=sx*fy-sy*fx;
+  return new Float32Array([sx,ux,-fx,0, sy,uy,-fy,0, sz,uz,-fz,0,
+    -(sx*e[0]+sy*e[1]+sz*e[2]), -(ux*e[0]+uy*e[1]+uz*e[2]), fx*e[0]+fy*e[1]+fz*e[2], 1]);
+}
+function modelM(tx,ty,tz,sx,sy,sz,rot,axis){       // T * R(axis) * S
+  if(!rot) return new Float32Array([sx,0,0,0, 0,sy,0,0, 0,0,sz,0, tx,ty,tz,1]);
+  const c=Math.cos(rot), s=Math.sin(rot);
+  return axis==='z'
+    ? new Float32Array([c*sx,s*sx,0,0, -s*sy,c*sy,0,0, 0,0,sz,0, tx,ty,tz,1])
+    : new Float32Array([sx,0,0,0, 0,c*sy,s*sy,0, 0,-s*sz,c*sz,0, tx,ty,tz,1]);
+}
+const N_ID=new Float32Array([1,0,0, 0,1,0, 0,0,1]);
+function nrmMat(rot,axis){                          // cube normals are axis-aligned,
+  if(!rot) return N_ID;                             // so rotation alone is enough
+  const c=Math.cos(rot), s=Math.sin(rot);
+  return axis==='z' ? new Float32Array([c,s,0, -s,c,0, 0,0,1])
+                    : new Float32Array([1,0,0, 0,c,s, 0,-s,c]);
+}
+
+/* ========================= WEBGL SETUP =================================== */
+const cv=$('game'), fx=$('fx'), octx=fx.getContext('2d');
+const gl=cv.getContext('webgl',{alpha:true,antialias:true});
+let vw=0,vh=0,dpr=1,halfW=3.5,halfH=4.4,topF=0.65;
+let uMVP,uNrm,uCol,uLight,VP=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
+
+function initGL(){
+  const vs=`attribute vec3 aP; attribute vec3 aN;
+    uniform mat4 uMVP; uniform mat3 uNrm; varying vec3 vN;
+    void main(){ gl_Position=uMVP*vec4(aP,1.0); vN=uNrm*aN; }`;
+  const fs=`precision mediump float; varying vec3 vN;
+    uniform vec3 uCol; uniform vec3 uLight;
+    void main(){ float d=max(dot(normalize(vN),uLight),0.0);
+      gl_FragColor=vec4(uCol*(0.55+0.5*d),1.0); }`;
+  function sh(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; }
+  const pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  uMVP=gl.getUniformLocation(pr,'uMVP'); uNrm=gl.getUniformLocation(pr,'uNrm');
+  uCol=gl.getUniformLocation(pr,'uCol'); uLight=gl.getUniformLocation(pr,'uLight');
+  const L=[0.5,0.9,0.3], ll=Math.hypot(...L);
+  gl.uniform3f(uLight,L[0]/ll,L[1]/ll,L[2]/ll);
+  // unit cube: 6 faces x 4 verts, interleaved pos+normal
+  const v=[], idx=[]; let vi=0;
+  for(let a=0;a<3;a++) for(const s of [1,-1]){
+    const u=(a+1)%3, w=(a+2)%3;
+    for(const [du,dw] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+      const p=[0,0,0], n=[0,0,0];
+      p[a]=s*0.5; p[u]=du*0.5; p[w]=dw*0.5; n[a]=s;
+      v.push(p[0],p[1],p[2],n[0],n[1],n[2]);
+    }
+    idx.push(vi,vi+1,vi+2, vi,vi+2,vi+3); vi+=4;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,gl.createBuffer());
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(idx),gl.STATIC_DRAW);
+  const aP=gl.getAttribLocation(pr,'aP'), aN=gl.getAttribLocation(pr,'aN');
+  gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,24,0);
+  gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN,3,gl.FLOAT,false,24,12);
+  gl.enable(gl.DEPTH_TEST); gl.clearColor(0,0,0,0);
+}
+if(gl) initGL();
+
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  fx.width=vw*dpr; fx.height=vh*dpr; octx.setTransform(dpr,0,0,dpr,0,0);
+  if(gl) gl.viewport(0,0,cv.width,cv.height);
+  const aspect=vw/vh;
+  halfW=3.5; halfH=halfW/aspect;
+  if(halfH<4.4){ halfH=4.4; halfW=halfH*aspect; }
+  topF=aspect>1?0.95:0.65;      // landscape: keep tower clear of the HUD
+}
+addEventListener('resize',resize); resize();
+
+function project(x,y,z){                            // world -> CSS px (via VP)
+  const m=VP;
+  const cx=m[0]*x+m[4]*y+m[8]*z+m[12];
+  const cy=m[1]*x+m[5]*y+m[9]*z+m[13];
+  const cw=m[3]*x+m[7]*y+m[11]*z+m[15]||1;
+  return [(cx/cw+1)/2*vw, (1-(cy/cw+1)/2)*vh];
+}
+
+/* ========================= STATE ========================================= */
+function hsl(h,s=0.62,l=0.56){
+  h=(((h%360)+360)%360)/360;
+  const q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q;
+  const f=t=>{ t=((t%1)+1)%1;
+    if(t<1/6) return p+(q-p)*6*t; if(t<0.5) return q;
+    if(t<2/3) return p+(q-p)*(2/3-t)*6; return p; };
+  return [f(h+1/3),f(h),f(h-1/3)];
+}
+const colorFor=lvl=>hsl(205+lvl*17);
+const BH=CONFIG.blockH;
+
+const S={
+  phase:'play',            // play|over
+  stack:[], cur:null, bt:0, side:1,
+  combo:0, miss:0,
+  pieces:[], floats:[], parts:[], rings:[],
+  camX:0, camY:0, camZ:0, shake:0,
+  time:0, lastInput:0, tapped:false, failedOnce:false,
+  winAt:0, endPending:false,
+};
+
+const spd=()=>Math.min(CONFIG.spd0+(S.stack.length-1)*CONFIG.spdInc, CONFIG.spdMax);
+const curOff=()=>CONFIG.amp*Math.sin(S.bt*spd());
+
+function spawnCur(){
+  const top=S.stack[S.stack.length-1];
+  S.side=-S.side;
+  S.cur={ axis:(S.stack.length%2)?'x':'z', w:top.w, d:top.d, color:colorFor(S.stack.length) };
+  S.bt=(S.side>0?Math.PI/2:-Math.PI/2)/spd();       // start at full swing
+}
+function newGame(){
+  S.stack=[{x:0,z:0,y:BH/2,w:CONFIG.baseSize,d:CONFIG.baseSize,color:colorFor(0)}];
+  S.cur=null; S.side=1; S.combo=0; S.miss=0;
+  S.pieces=[]; S.floats=[]; S.parts=[]; S.rings=[];
+  S.time=0; S.lastInput=0; S.tapped=false; S.failedOnce=false;
+  S.winAt=0; S.endPending=false; S.phase='play';
+  S.camX=0; S.camZ=0; S.camY=BH/2+0.6;
+  spawnCur(); hudUpd();
+}
+
+/* ========================= GAME FLOW ===================================== */
+function hudUpd(){
+  const h=S.stack.length-1;
+  $('hP').textContent='HEIGHT '+h;
+  $('bar').style.width=clamp(h/CONFIG.goal*100,0,100)+'%';
+}
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  setTimeout(()=>t.classList.remove('show'),1100);
+}
+function addFloat(wx,wy,wz,txt,color,size){
+  const [x,y]=project(wx,wy,wz);
+  S.floats.push({x,y,txt,color,size,age:0,life:0.85});
+}
+function ringAt(b){ S.rings.push({x:b.x,z:b.z,y:b.y+BH/2,w:b.w,d:b.d,age:0}); }
+function confetti(){
+  const cols=['#ffd54a','#42d76c','#ff6b9d','#5ac8fa','#ff9f43'];
+  const top=S.stack[S.stack.length-1], [x,y]=project(top.x,top.y+BH,top.z);
+  for(let i=0;i<90;i++) S.parts.push({x:x+rnd(-40,40),y,vx:rnd(-360,360),vy:rnd(-680,-240),
+    life:rnd(.9,1.6),age:0,color:cols[i%cols.length],r:rnd(3,6),rot:rnd(0,7),vr:rnd(-8,8)});
+}
+
+function drop(){
+  if(S.phase!=='play'||!S.cur) return false;
+  const top=S.stack[S.stack.length-1], a=S.cur.axis, sizeK=a==='x'?'w':'d';
+  const size=S.cur[sizeK], c0=top[a], cc=c0+curOff(), delta=cc-c0;
+  const y=top.y+BH;
+  const placed={x:top.x,z:top.z,y,w:S.cur.w,d:S.cur.d,color:S.cur.color};
+
+  if(Math.abs(delta)<CONFIG.perfectTol){            // ---- PERFECT
+    S.combo++;
+    placed[sizeK]=Math.min(CONFIG.baseSize,size+CONFIG.growPerfect);
+    Sfx.perfect(S.combo); vibe(20); ringAt(placed);
+    addFloat(placed.x,y+0.6,placed.z,S.combo>=2?'PERFECT ×'+S.combo:'PERFECT!','#ffd54a',34);
+    if(S.combo>=3) S.shake=Math.min(3+S.combo,8);
+  } else {
+    const overlap=size-Math.abs(delta);
+    if(overlap<=0.02){                              // ---- total miss: block falls, retry
+      S.combo=0; S.miss++; S.failedOnce=true;
+      const p={x:top.x,z:top.z,y,w:S.cur.w,d:S.cur.d,color:S.cur.color,
+               vy:0,rot:0,rotV:Math.sign(delta)*rnd(2,4),axis:a,dir:Math.sign(delta)};
+      p[a]=cc; S.pieces.push(p);
+      Sfx.miss(); vibe(60); S.shake=10; toast('TRY AGAIN!','bad');
+      S.bt=(S.side>0?Math.PI/2:-Math.PI/2)/spd();
+      return false;
+    }
+    S.combo=0;                                      // ---- slice
+    const L=Math.max(cc-size/2,c0-size/2), R=Math.min(cc+size/2,c0+size/2);
+    placed[a]=(L+R)/2;
+    placed[sizeK]=Math.max(CONFIG.minSize,Math.min(size,overlap+CONFIG.regrow));
+    const ps=Math.min(Math.abs(delta),size);
+    const p={x:placed.x,z:placed.z,y,w:S.cur.w,d:S.cur.d,color:S.cur.color,
+             vy:0,rot:0,rotV:Math.sign(delta)*rnd(3,5),axis:a,dir:Math.sign(delta)};
+    p[a]=delta>0?R+ps/2:L-ps/2; p[sizeK]=ps;
+    S.pieces.push(p);
+    Sfx.place(); Sfx.slice(); vibe(10); S.shake=Math.max(S.shake,1.5);
+  }
+
+  S.stack.push(placed); hudUpd();
+  if(S.stack.length-1>=CONFIG.goal){                // ---- WIN
+    S.cur=null; S.phase='over'; S.winAt=S.time; S.endPending=true;
+    Sfx.win(); vibe([30,40,30]); confetti(); toast('TOWER BUILT!','good');
+    return true;
+  }
+  spawnCur();
+  return true;
+}
+
+function showEnd(){ S.phase='over'; S.endPending=false; $('end').classList.add('show'); }
+
+/* ========================= UPDATE (headless-steppable) =================== */
+function update(dt){
+  S.time+=dt;
+  if(S.phase==='play'&&S.cur) S.bt+=dt;
+  const top=S.stack[S.stack.length-1];
+  S.camY+=(top.y+0.6-S.camY)*Math.min(1,dt*3.5);
+  S.camX+=(top.x-S.camX)*Math.min(1,dt*3);
+  S.camZ+=(top.z-S.camZ)*Math.min(1,dt*3);
+  for(let i=S.pieces.length-1;i>=0;i--){
+    const p=S.pieces[i];
+    p.vy-=14*dt; p.y+=p.vy*dt; p[p.axis]+=p.dir*1.4*dt; p.rot+=p.rotV*dt;
+    if(p.y<S.camY-14) S.pieces.splice(i,1);
+  }
+  for(let i=S.floats.length-1;i>=0;i--){
+    const f=S.floats[i]; f.age+=dt; f.y-=55*dt; if(f.age>f.life) S.floats.splice(i,1);
+  }
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt;
+    if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=900*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.rot+=p.vr*dt;
+  }
+  for(let i=S.rings.length-1;i>=0;i--){ S.rings[i].age+=dt; if(S.rings[i].age>0.45) S.rings.splice(i,1); }
+  S.shake=Math.max(0,S.shake-dt*26);
+  if(S.endPending&&S.time>S.winAt+1.4) showEnd();
+  if(S.phase==='play'&&S.time>CONFIG.autoEnd) showEnd();
+}
+
+/* ========================= RENDER ======================================== */
+function drawBox(x,y,z,sx,sy,sz,col,rot,axis){
+  gl.uniformMatrix4fv(uMVP,false,mul(VP,modelM(x,y,z,sx,sy,sz,rot,axis)));
+  gl.uniformMatrix3fv(uNrm,false,nrmMat(rot,axis));
+  gl.uniform3f(uCol,col[0],col[1],col[2]);
+  gl.drawElements(gl.TRIANGLES,36,gl.UNSIGNED_SHORT,0);
+}
+function render(){
+  if(!gl) return;
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  const jx=S.shake?rnd(-1,1)*S.shake*0.014:0, jz=S.shake?rnd(-1,1)*S.shake*0.014:0;
+  const tgt=[S.camX+jx,S.camY,S.camZ+jz];
+  const D=[1,0.75,1], dl=Math.hypot(...D);
+  const eye=[tgt[0]+D[0]/dl*18, tgt[1]+D[1]/dl*18, tgt[2]+D[2]/dl*18];
+  VP=mul(ortho(-halfW,halfW,-halfH*(2-topF),halfH*topF,1,60), lookAt(eye,tgt,[0,1,0]));
+  drawBox(0,-15,0,2.6,30,2.6,[0.16,0.18,0.32]);                   // pedestal column
+  for(let i=Math.max(0,S.stack.length-26);i<S.stack.length;i++){
+    const b=S.stack[i]; drawBox(b.x,b.y,b.z,b.w,BH,b.d,b.color);
+  }
+  if(S.cur){
+    const top=S.stack[S.stack.length-1], a=S.cur.axis;
+    const px=a==='x'?top.x+curOff():top.x, pz=a==='z'?top.z+curOff():top.z;
+    drawBox(px,top.y+BH,pz,S.cur.w,BH,S.cur.d,S.cur.color);
+  }
+  for(const p of S.pieces)
+    drawBox(p.x,p.y,p.z,p.w,BH,p.d,p.color,p.rot,p.axis==='x'?'z':'x');
+  overlay();
+}
+function overlay(){
+  octx.clearRect(0,0,vw,vh);
+  for(const r of S.rings){
+    const sc=1+r.age*1.6, hw=r.w/2*sc, hd=r.d/2*sc;
+    octx.globalAlpha=1-r.age/0.45;
+    octx.strokeStyle='#fff'; octx.lineWidth=3; octx.beginPath();
+    [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].forEach(([dx,dz],i)=>{
+      const [x,y]=project(r.x+dx,r.y,r.z+dz);
+      i?octx.lineTo(x,y):octx.moveTo(x,y);
+    });
+    octx.closePath(); octx.stroke();
+  }
+  for(const f of S.floats){
+    octx.globalAlpha=1-f.age/f.life;
+    octx.font='900 '+f.size+'px system-ui'; octx.textAlign='center'; octx.textBaseline='middle';
+    octx.strokeStyle='rgba(0,0,0,.4)'; octx.lineWidth=5; octx.strokeText(f.txt,f.x,f.y);
+    octx.fillStyle=f.color; octx.fillText(f.txt,f.x,f.y);
+  }
+  for(const p of S.parts){
+    octx.globalAlpha=1-p.age/p.life; octx.fillStyle=p.color;
+    octx.save(); octx.translate(p.x,p.y); octx.rotate(p.rot);
+    octx.fillRect(-p.r,-p.r/2,p.r*2,p.r); octx.restore();
+  }
+  octx.globalAlpha=1;
+}
+
+/* ========================= INPUT ========================================= */
+function tap(){
+  Sfx.ensure(); S.tapped=true; S.lastInput=S.time;
+  drop();
+}
+fx.addEventListener('pointerdown',tap);
+addEventListener('keydown',e=>{ if(e.code==='Space'&&!e.repeat) tap(); });
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would kill the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* ========================= MAIN LOOP ===================================== */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt); render();
+  const wait=!S.tapped?1.0:(S.failedOnce?1.8:4.0);
+  $('hand').classList.toggle('show', S.phase==='play'&&(S.time-S.lastInput)>wait);
+}
+
+function start(){ newGame(); $('barLbl').textContent='GOAL '+CONFIG.goal; requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* debug hooks for automated testing */
+window.__game={S,CONFIG,drop,newGame,spd,curOff,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); render(); }};
+</script>
+</body>
+</html>

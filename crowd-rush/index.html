@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Crowd Rush — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; touch-action:none; overscroll-behavior:none;
+    /* sky settles on the fog colour well above the horizon, so the far end of
+       the 3D ground fades into it with no visible seam at any aspect ratio */
+    background:linear-gradient(180deg,#37a0e6 0%,#78cbf5 13%,#9edcfb 23%,#9edcfb 100%);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game,#fx { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(26px,6vw); font-weight:900; letter-spacing:2px; color:#fff;
+    text-shadow:0 2px 0 #1d5c86, 0 4px 12px rgba(0,0,0,.45); }
+  #stats { margin-top:7px; display:flex; justify-content:center; gap:8px; }
+  .pill { padding:5px 14px; border-radius:16px; background:rgba(6,32,52,.42); color:#fff; font-weight:800; font-size:14px; }
+  #barWrap { position:relative; margin:8px auto 0; width:min(220px,56vw); height:16px; border-radius:9px;
+    background:rgba(6,32,52,.42); overflow:hidden; }
+  #bar { position:absolute; inset:0; width:0%; border-radius:9px; transition:width .28s ease;
+    background:linear-gradient(90deg,#ffd54a,#ff7a1a); }
+  #barLbl { position:absolute; inset:0; font-size:10px; font-weight:800; letter-spacing:1px; color:#fff;
+    display:flex; align-items:center; justify-content:center; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.35); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(6,32,52,.32); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  #toast { position:absolute; top:34%; left:0; right:0; text-align:center; font-size:min(42px,10vw); font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.45);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#ffe14a; } #toast.bad { color:#ff6b5e; }
+
+  /* ---------- Tutorial hand: swipes sideways (drag mechanic) ---------- */
+  #hand { position:fixed; left:50%; bottom:16%; transform:translateX(-50%); text-align:center; pointer-events:none;
+    opacity:0; transition:opacity .35s; }
+  #hand.show { opacity:1; }
+  #hand span { display:block; font-size:58px; filter:drop-shadow(0 4px 8px rgba(0,0,0,.45));
+    animation:swipeAnim 1.5s ease-in-out infinite; }
+  #hand b { color:#fff; font-size:20px; letter-spacing:4px; text-shadow:0 2px 8px rgba(0,0,0,.6); }
+  @keyframes swipeAnim {
+    0%,100%{ transform:translateX(-46px) scale(.94) }
+    50%    { transform:translateX(46px)  scale(1) } }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background:radial-gradient(ellipse at 50% 30%, #12406b 0%, #06172b 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:96px; height:96px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:linear-gradient(160deg,#ffd54a,#ff8a1a); box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:min(30px,7.2vw); font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.4); }
+  #end p  { color:#8fb6d8; font-size:16px; margin-top:-8px; text-align:center; padding:0 32px; }
+  #cta { padding:18px 64px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#6f8fae; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<canvas id="fx"></canvas>
+<div id="hud">
+  <div id="hdr">
+    <div id="title">CROWD RUSH</div>
+    <div id="stats"><span class="pill" id="cP">CROWD 10</span></div>
+    <div id="barWrap"><div id="bar"></div><div id="barLbl">TARGET 80</div></div>
+  </div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="hand"><span>👆</span><b>SWIPE</b></div>
+<div id="end">
+  <div class="icon" id="endIcon">💥</div>
+  <h1 id="endTitle">Wall smashed!</h1>
+  <p id="endSub">Grow a bigger crowd in the full game.</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Play again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   CROWD RUSH — 3D crowd-runner playable ad, single self-contained file.
+
+   Rendering is raw WebGL (no libraries): one unit-cube mesh, perspective
+   camera, per-face lambert shading, distance fog. The crowd is drawn with
+   ANGLE_instanced_arrays (3 draw calls for the whole crowd) with a plain
+   per-body loop as fallback.
+
+   All timing runs on accumulated sim-time inside update(dt), so the entire
+   game — including the autopilot, the finale and the end card — can be
+   stepped headless via __game.tick().
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL:'https://apps.apple.com/app/id000000000',  // replace per campaign
+  start: 10,            // runners at the line
+  speed: 8.2,           // forward world units / second
+  roadHalf: 3.0,        // road spans x in [-roadHalf, roadHalf]
+  dragSpan: 9.5,        // world units covered by a full-width swipe
+  follow: 11,           // how fast the formation chases the drag target
+  steer: 4.2,           // autopilot lateral speed (units/s)
+  slotGap: 0.46,        // spiral packing: crowd radius = slotGap * N^slotPack
+  slotPack: 0.42,
+  bodyCap: 150,         // hard cap on rendered bodies (count can exceed it)
+  bladeR: 1.15,         // saw kill half-width
+  rescueMin: 10,        // ad-safety: crowd is topped back up to this...
+  rescueWait: 0.6,      // ...this long after it is clear of every hazard
+  brickCols: 5, brickRows: 4, brickCost: 3, wallH: 2.9,
+  smashStep: 0.055,     // seconds per brick during the finale
+  endPause: 1.9,        // seconds between the finale and the end card
+  autoEnd: 80,          // hard stop
+};
+const TARGET = CONFIG.brickCols * CONFIG.brickRows * CONFIG.brickCost;  // crowd needed to level the wall
+
+/* The track. Ordered by z. Authoring rule in short: the "all best choices" path must clear TARGET and the
+   "all worst choices" path must stay alive (rescueMin guarantees that). */
+const TRACK = [
+  { t:'gate', z: 28,  L:{op:'x',v:2},  R:{op:'+',v:6}  },
+  { t:'saw',  z: 46,  x: 1.75 },
+  { t:'gate', z: 66,  L:{op:'/',v:2},  R:{op:'x',v:3}  },
+  { t:'pit',  z: 84,  len:5, cost:16 },
+  { t:'saw',  z:104,  x:-1.60 },
+  { t:'gate', z:124,  L:{op:'x',v:3},  R:{op:'+',v:30} },
+  { t:'saw',  z:140,  x:-1.50 },   // sits on the good side of the gate above:
+  { t:'wall', z:170 },             // take the ×3, then immediately swerve off it
+];
+const WALLZ = TRACK[TRACK.length-1].z;
+
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const $=id=>document.getElementById(id);
+const vibe=p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+const clampX=x=>clamp(x,-(CONFIG.roadHalf-0.4),CONFIG.roadHalf-0.4);
+
+/* ========================= AUDIO (synth, no assets) ====================== */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  noise(dur,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const n=Math.floor(this.ctx.sampleRate*dur), buf=this.ctx.createBuffer(1,n,this.ctx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    const s=this.ctx.createBufferSource(), g=this.ctx.createGain();
+    s.buffer=buf; g.gain.value=vol; s.connect(g); g.connect(this.ctx.destination); s.start(this.ctx.currentTime+when);
+  },
+  gain(n){ const f=520*Math.pow(1.0595,Math.min(n,12));         // pitch climbs with each good gate
+    this.tone(f,f*1.5,0.16,'triangle',0.2); this.tone(f*2,f*2,0.1,'sine',0.09,0.04); },
+  loss(){ this.tone(300,90,0.3,'sawtooth',0.18); },
+  cut(){ this.tone(900,240,0.1,'sawtooth',0.13); this.noise(0.12,0.1); },
+  dive(){ this.tone(420,160,0.14,'sine',0.13); },
+  impact(){ this.tone(140,50,0.26,'square',0.24); this.noise(0.22,0.16); },
+  brick(n){ this.tone(220+((n*37)%120),90,0.09,'square',0.13); this.noise(0.07,0.07); },
+  win(){ [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.2,'triangle',0.2,i*0.08)); },
+  hold(){ this.tone(320,160,0.5,'sine',0.16); this.tone(240,120,0.6,'triangle',0.1,0.08); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* ========================= CTA / MRAID =================================== */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{ $('end').classList.remove('show'); newGame(); });
+
+/* ========================= TINY MAT4 ===================================== */
+function mul(a,b){                                   // column-major a*b
+  const o=new Float32Array(16);
+  for(let c=0;c<4;c++) for(let r=0;r<4;r++)
+    o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];
+  return o;
+}
+/* The x term is negated on purpose. We run toward +z, so a right-handed
+   lookAt puts world +x on the *left* of the screen; mirroring here makes
+   "swipe right" mean "+x" for the player, the level data and project(). */
+function persp(fovy,aspect,n,f){
+  const t=1/Math.tan(fovy/2);
+  return new Float32Array([-t/aspect,0,0,0, 0,t,0,0, 0,0,(f+n)/(n-f),-1, 0,0,2*f*n/(n-f),0]);
+}
+function lookAt(e,c,u){
+  let fx=c[0]-e[0],fy=c[1]-e[1],fz=c[2]-e[2];
+  const fl=Math.hypot(fx,fy,fz); fx/=fl; fy/=fl; fz/=fl;
+  let sx=fy*u[2]-fz*u[1], sy=fz*u[0]-fx*u[2], sz=fx*u[1]-fy*u[0];
+  const sl=Math.hypot(sx,sy,sz); sx/=sl; sy/=sl; sz/=sl;
+  const ux=sy*fz-sz*fy, uy=sz*fx-sx*fz, uz=sx*fy-sy*fx;
+  return new Float32Array([sx,ux,-fx,0, sy,uy,-fy,0, sz,uz,-fz,0,
+    -(sx*e[0]+sy*e[1]+sz*e[2]), -(ux*e[0]+uy*e[1]+uz*e[2]), fx*e[0]+fy*e[1]+fz*e[2], 1]);
+}
+function modelM(tx,ty,tz,sx,sy,sz,rot,axis){         // T * R(axis) * S
+  if(!rot) return new Float32Array([sx,0,0,0, 0,sy,0,0, 0,0,sz,0, tx,ty,tz,1]);
+  const c=Math.cos(rot), s=Math.sin(rot);
+  return axis==='z'
+    ? new Float32Array([c*sx,s*sx,0,0, -s*sy,c*sy,0,0, 0,0,sz,0, tx,ty,tz,1])
+    : new Float32Array([sx,0,0,0, 0,c*sy,s*sy,0, 0,-s*sz,c*sz,0, tx,ty,tz,1]);
+}
+const M_ID=new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+const N_ID=new Float32Array([1,0,0, 0,1,0, 0,0,1]);
+function nrmMat(rot,axis){                            // cube normals are axis-aligned,
+  if(!rot) return N_ID;                               // so the rotation alone is enough
+  const c=Math.cos(rot), s=Math.sin(rot);
+  return axis==='z' ? new Float32Array([c,s,0, -s,c,0, 0,0,1])
+                    : new Float32Array([1,0,0, 0,c,s, 0,-s,c]);
+}
+function hsl(h,s,l){
+  h=(((h%360)+360)%360)/360;
+  const q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q;
+  const f=t=>{ t=((t%1)+1)%1;
+    if(t<1/6) return p+(q-p)*6*t; if(t<0.5) return q;
+    if(t<2/3) return p+(q-p)*(2/3-t)*6; return p; };
+  return [f(h+1/3),f(h),f(h-1/3)];
+}
+
+/* ========================= PALETTE ======================================= */
+const C = {
+  grass:[0.34,0.58,0.30], road:[0.30,0.32,0.39], rail:[0.19,0.21,0.27],
+  line:[0.86,0.88,0.94],  pit:[0.07,0.08,0.11],  plank:[0.62,0.44,0.26],
+  post:[0.93,0.95,1.00],  good:[0.16,0.83,0.40], bad:[0.94,0.26,0.29],
+  blade:[0.82,0.85,0.92], hub:[0.90,0.24,0.20],
+  brickA:[0.76,0.30,0.22], brickB:[0.62,0.23,0.17],
+  head:[0.98,0.80,0.62],  shadow:[0.10,0.16,0.14],
+  fog:[0.62,0.86,0.98],   // must match the CSS sky's settled colour
+};
+const runnerCol=()=>hsl(rnd(198,218), 0.62, rnd(0.48,0.62));
+
+/* ========================= WEBGL SETUP =================================== */
+const cv=$('game'), fx=$('fx'), octx=fx.getContext('2d');
+const gl=cv.getContext('webgl',{alpha:true,antialias:true});
+let vw=0,vh=0,dpr=1,fov=1.0,land=0;
+let ext=null, aP,aN,aOff,aCol, uVP,uM,uNrm,uScale,uMB,uCol,uLight,uFogR,uFogCol,uAlpha;
+let instBuf=null, instData=null;
+let VP=new Float32Array(M_ID);
+
+function initGL(){
+  const vs=`attribute vec3 aP; attribute vec3 aN; attribute vec3 aOff; attribute vec3 aCol;
+    uniform mat4 uVP, uM; uniform mat3 uNrm; uniform vec3 uScale; uniform vec4 uMB;
+    varying vec3 vN; varying vec3 vC; varying float vZ;
+    void main(){
+      vec3 p = aP*uScale + vec3(aOff.x, aOff.y*uMB.w, aOff.z) + uMB.xyz;
+      vec4 w = uM*vec4(p,1.0);
+      gl_Position = uVP*w; vN = uNrm*aN; vC = aCol; vZ = w.z;
+    }`;
+  const fs=`precision mediump float;
+    varying vec3 vN; varying vec3 vC; varying float vZ;
+    uniform vec3 uLight, uFogCol; uniform vec2 uFogR; uniform float uAlpha;
+    void main(){
+      float d = max(dot(normalize(vN), uLight), 0.0);
+      vec3 c = vC*(0.56+0.48*d);
+      float f = clamp((vZ-uFogR.x)/uFogR.y, 0.0, 1.0);
+      gl_FragColor = vec4(mix(c, uFogCol, f*0.92), uAlpha);
+    }`;
+  function sh(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; }
+  const pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  uVP=gl.getUniformLocation(pr,'uVP');       uM=gl.getUniformLocation(pr,'uM');
+  uNrm=gl.getUniformLocation(pr,'uNrm');     uScale=gl.getUniformLocation(pr,'uScale');
+  uMB=gl.getUniformLocation(pr,'uMB');       uLight=gl.getUniformLocation(pr,'uLight');
+  uFogR=gl.getUniformLocation(pr,'uFogR');   uFogCol=gl.getUniformLocation(pr,'uFogCol');
+  uAlpha=gl.getUniformLocation(pr,'uAlpha');
+  const L=[0.45,0.92,0.28], ll=Math.hypot(L[0],L[1],L[2]);
+  gl.uniform3f(uLight,L[0]/ll,L[1]/ll,L[2]/ll);
+  gl.uniform3f(uFogCol,C.fog[0],C.fog[1],C.fog[2]);
+  gl.uniform1f(uAlpha,1);
+
+  // unit cube: 6 faces x 4 verts, interleaved pos+normal
+  const v=[], idx=[]; let vi=0;
+  for(let a=0;a<3;a++) for(const s of [1,-1]){
+    const u=(a+1)%3, w=(a+2)%3;
+    for(const [du,dw] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+      const p=[0,0,0], n=[0,0,0];
+      p[a]=s*0.5; p[u]=du*0.5; p[w]=dw*0.5; n[a]=s;
+      v.push(p[0],p[1],p[2],n[0],n[1],n[2]);
+    }
+    idx.push(vi,vi+1,vi+2, vi,vi+2,vi+3); vi+=4;
+  }
+  aP=gl.getAttribLocation(pr,'aP');   aN=gl.getAttribLocation(pr,'aN');
+  aOff=gl.getAttribLocation(pr,'aOff'); aCol=gl.getAttribLocation(pr,'aCol');
+
+  const mesh=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,mesh);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,24,0);
+  gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN,3,gl.FLOAT,false,24,12);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,gl.createBuffer());
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(idx),gl.STATIC_DRAW);
+
+  // per-instance stream: [x,y,z, r,g,b] — left disabled except during crowd passes
+  instData=new Float32Array(CONFIG.bodyCap*6);
+  instBuf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,instBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,instData.byteLength,gl.DYNAMIC_DRAW);
+  gl.vertexAttribPointer(aOff,3,gl.FLOAT,false,24,0);
+  gl.vertexAttribPointer(aCol,3,gl.FLOAT,false,24,12);
+  ext=gl.getExtension('ANGLE_instanced_arrays');
+  if(ext){ ext.vertexAttribDivisorANGLE(aOff,1); ext.vertexAttribDivisorANGLE(aCol,1); }
+
+  gl.enable(gl.DEPTH_TEST);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  gl.clearColor(0,0,0,0);
+}
+if(gl) initGL();
+
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr; cv.style.width=vw+'px'; cv.style.height=vh+'px';
+  fx.width=vw*dpr; fx.height=vh*dpr; fx.style.width=vw+'px'; fx.style.height=vh+'px';
+  octx.setTransform(dpr,0,0,dpr,0,0);
+  if(gl) gl.viewport(0,0,cv.width,cv.height);
+  // keep a constant horizontal half-width visible at the focus distance,
+  // so the road fills portrait without a fish-eye in landscape
+  const aspect=vw/vh, tanH=3.7/13;
+  fov=clamp(2*Math.atan(tanH/aspect), 0.61, 1.31);
+  land=clamp(aspect-1,0,1);       // landscape: pull the camera back so the crowd
+                                  // clears the bottom edge of the short viewport
+}
+addEventListener('resize',resize); resize();
+
+function project(x,y,z){                              // world -> CSS px (+ clip w)
+  const m=VP;
+  const cx=m[0]*x+m[4]*y+m[8]*z+m[12];
+  const cy=m[1]*x+m[5]*y+m[9]*z+m[13];
+  const cw=m[3]*x+m[7]*y+m[11]*z+m[15];
+  const w=Math.abs(cw)<1e-4?1e-4:cw;
+  return [(cx/w+1)/2*vw, (1-(cy/w+1)/2)*vh, cw];
+}
+function pxPerUnit(x,y,z){                            // screen px of one world unit at that point
+  const a=project(x,y,z), b=project(x,y+1,z);
+  return Math.hypot(b[0]-a[0], b[1]-a[1]);
+}
+
+/* ========================= CROWD FORMATION =============================== */
+/* Golden-angle spiral: slot i sits at radius gap*i^pack, so the crowd grows
+   as a disc and every count change just re-targets the same slots.
+   pack < 0.5 (instead of the area-preserving 0.5) means the crowd packs
+   tighter as it grows: 10 runners read as individuals, 130 still fit the
+   road instead of spilling 4 units past the rails. */
+const crowdR=n=>CONFIG.slotGap*Math.pow(Math.max(1,n),CONFIG.slotPack);
+const SLOT=(()=>{
+  const a=[], GA=2.399963229728653;
+  for(let i=0;i<CONFIG.bodyCap;i++){
+    const r=CONFIG.slotGap*Math.pow(i,CONFIG.slotPack), t=i*GA;
+    a.push([Math.cos(t)*r*0.85, Math.sin(t)*r*1.15]);   // slightly elongated along the run
+  }
+  return a;
+})();
+const BODY={ w:0.30,h:0.72,d:0.24, y:0.37 }, HEAD={ s:0.24, y:0.86 };
+/* Road surface is y=0. Everything that must read as "on the ground" stacks
+   above it: centre line 0.000–0.016, crowd shadows 0.018–0.038, feet 0.01. */
+
+/* ========================= STATE ========================================= */
+const S={
+  phase:'run',                 // run | smash | through | held | over
+  time:0, cz:0, pz:0, cx:0, tx:0,
+  count:CONFIG.start, bodies:[], feat:[], bricks:[], planks:[],
+  debris:[], floats:[], parts:[],
+  shake:0, camK:0, touched:false, dragging:false, lastPx:0,
+  brokeN:0, toBreak:0, nextHit:0, resolved:false, win:false,
+  gains:0, sawHits:0, rescues:0, lowT:0, order:[], resolveAt:0,
+  endPending:false, endAt:0,
+  noInst:false,                // debug: force the no-instancing draw path
+};
+
+function mkBody(join){
+  const a=rnd(0,6.2832), r=join? rnd(1.0,2.0) : rnd(0,0.6);
+  return { x:S.cx+Math.cos(a)*r, z:S.cz-(join?2.4:0)+Math.sin(a)*r,
+           hop:rnd(0,6.2832), col:runnerCol() };
+}
+function buildWall(){
+  S.bricks=[];
+  const cols=CONFIG.brickCols, rows=CONFIG.brickRows;
+  const bw=(CONFIG.roadHalf*2-0.2)/cols, bh=CONFIG.wallH/rows;
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++)
+    S.bricks.push({ x:-CONFIG.roadHalf+0.1+bw*(c+0.5), y:0.06+bh*(r+0.5), z:WALLZ,
+                    w:bw-0.05, h:bh-0.05, col:(r+c)%2?C.brickA:C.brickB, r:r, c:c });
+  // knock the bottom row out first, centre-out — reads like the crowd digging through
+  S.order=S.bricks.map((b,i)=>i).sort((i,j)=>{
+    const a=S.bricks[i], b=S.bricks[j];
+    return a.r-b.r || Math.abs(a.c-(cols-1)/2)-Math.abs(b.c-(cols-1)/2);
+  });
+}
+function newGame(){
+  S.phase='run'; S.time=0; S.cz=0; S.pz=0; S.cx=0; S.tx=0;
+  S.count=CONFIG.start; S.bodies=[];
+  for(let i=0;i<CONFIG.start;i++) S.bodies.push(mkBody(false));
+  S.feat=TRACK.map(f=>Object.assign({done:false,a:0},f));
+  S.planks=[]; S.debris=[]; S.floats=[]; S.parts=[];
+  S.shake=0; S.camK=0; S.touched=false; S.dragging=false;
+  S.brokeN=0; S.toBreak=0; S.nextHit=0; S.resolved=false; S.win=false;
+  S.gains=0; S.sawHits=0; S.rescues=0; S.lowT=0;
+  S.endPending=false; S.endAt=0;
+  buildWall(); hudUpd();
+  $('end').classList.remove('show');        // also covers __game.newGame() after an end card
+  $('toast').classList.remove('show');
+}
+
+/* ========================= HUD / FX ====================================== */
+function hudUpd(){
+  $('cP').textContent='CROWD '+S.count;
+  $('bar').style.width=clamp(S.count/TARGET*100,0,100)+'%';
+}
+let toastT=0;
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1100);
+}
+function addFloat(wx,wy,wz,txt,color){
+  S.floats.push({wx,wy,wz,txt,color,age:0,life:1.0});
+}
+/* Particles live in screen space: the world point is projected once at spawn.
+   Anchoring them in 3D instead makes a burst read as coloured litter sitting
+   on the road while the camera runs away from it. */
+function spark(wx,wy,wz,n,cols,spd,life,rad){
+  const o=project(wx,wy,wz);
+  if(o[2]<=0.1) return;
+  for(let i=0;i<n;i++) S.parts.push({
+    x:o[0]+rnd(-rad,rad), y:o[1]+rnd(-rad*0.5,rad*0.5),
+    vx:rnd(-spd,spd), vy:rnd(-spd*2.1,-spd*0.55),
+    age:0, life:rnd(life*0.6,life), color:cols[i%cols.length], r:rnd(2.5,5.5) });
+}
+const PUFF=['#ff5b4a','#ff8a70','#ffb4a0'];
+const DUST=['#d9c7bd','#b89a8c','#f0e4dc'];
+const CONFETTI=['#ffd54a','#42d76c','#ff6b9d','#5ac8fa','#ff9f43'];
+const puff=(x,y,z,n)=>spark(x,y,z,n,PUFF,150,0.8,14);
+const confetti=()=>spark(S.cx,2.2,WALLZ-1,110,CONFETTI,340,1.7,90);
+
+/* ========================= CROWD SIZE OPS ================================ */
+function opApply(c,o){
+  if(o.op==='+') return c+o.v;
+  if(o.op==='x') return c*o.v;
+  if(o.op==='-') return Math.max(1,c-o.v);
+  return Math.max(1,Math.ceil(c/o.v));
+}
+const opLabel=o=>(o.op==='x'?'×':o.op==='+'?'+':o.op==='-'?'−':'÷')+o.v;
+const opGood=o=>o.op==='x'||o.op==='+';
+
+function grow(k){
+  S.count+=k;
+  for(let i=0;i<k && S.bodies.length<CONFIG.bodyCap;i++) S.bodies.push(mkBody(true));
+  hudUpd();
+}
+/* Removes k runners (never below 1) and returns how many actually went. */
+function shrink(k,mode){
+  k=Math.min(k,S.count-1); if(k<=0) return 0;
+  for(let i=0;i<k;i++){
+    if(!S.bodies.length) break;
+    const j=(Math.random()*S.bodies.length)|0;
+    loseBody(S.bodies[j],mode); S.bodies.splice(j,1);
+  }
+  S.count-=k; hudUpd(); return k;
+}
+function loseBody(b,mode){
+  // during the finale the runners are absorbed into the impact — flying blue
+  // bodies would just fight the brick debris for attention
+  if(mode==='smash' || S.debris.length>32) return;     // also bounds the draw cost
+  const dive=mode==='dive';
+  S.debris.push({ x:b.x, y:BODY.y, z:b.z,
+    vx: dive?rnd(-1.5,1.5) : mode==='saw'?rnd(4,9)*(b.x>S.cx?1:-1) : rnd(-2,2),
+    vy: dive?rnd(1.5,3) : rnd(3,6.5),
+    vz: dive?rnd(2.5,5.5) : rnd(-3,1),                 // divers arc forward into the pit
+    rot:0, rv:rnd(-9,9), col:b.col, age:0, life:dive?1.0:1.2, dive });
+}
+/* Ad-safety: the run can never fizzle out to nothing.
+   Checked once per frame rather than from each event, and held off while the
+   crowd is still inside a blade — otherwise a saw pass (which removes bodies
+   frame by frame) would fire the rescue dozens of times in a row. */
+function rescueCheck(dt){
+  if(S.phase!=='run' || S.count>=CONFIG.rescueMin){ S.lowT=0; return; }
+  for(const f of S.feat) if(f.t==='saw' && Math.abs(S.cz-f.z)<2.4){ S.lowT=0; return; }
+  S.lowT+=dt;
+  if(S.lowT<CONFIG.rescueWait) return;
+  S.lowT=0; grow(CONFIG.rescueMin-S.count); S.rescues++;
+  toast('+REINFORCEMENTS','good'); Sfx.gain(1); vibe(20);
+}
+
+/* ========================= TRACK FEATURES ================================ */
+function applyGate(f){
+  const o = S.cx<=0 ? f.L : f.R;
+  const before=S.count, after=opApply(before,o);
+  const d=after-before;
+  if(d>0){ grow(d); S.gains++; Sfx.gain(S.gains); vibe(15);
+           addFloat(S.cx,3.0,f.z,'+'+d,'#7dffa8'); }
+  else if(d<0){ shrink(-d,'poof'); Sfx.loss(); vibe(40); S.shake=5;
+           addFloat(S.cx,3.0,f.z,String(d),'#ff8a80'); }
+}
+function sawCut(f){
+  let n=0;
+  for(let i=S.bodies.length-1;i>=0;i--){
+    if(S.count-n<=1) break;
+    const b=S.bodies[i];
+    if(Math.abs(b.x-f.x)<CONFIG.bladeR && Math.abs(b.z-f.z)<0.85){
+      loseBody(b,'saw'); S.bodies.splice(i,1); n++;
+    }
+  }
+  if(n){
+    S.count-=n; S.sawHits+=n; hudUpd(); S.shake=Math.max(S.shake,4);
+    Sfx.cut(); vibe(25);
+    puff(f.x,1.0,f.z,7);
+    if(!f.floated){ f.floated=true; addFloat(f.x,3.3,f.z,'OUCH!','#ff8a80'); }
+  }
+}
+function bridge(f){
+  // the bridge never eats more than ~45% of the crowd, so a small crowd survives it
+  const cost=Math.min(f.cost, Math.max(3, Math.floor(S.count*0.45)));
+  const k=shrink(cost,'dive');
+  const nc=Math.max(2,Math.ceil(k/3));
+  for(let i=0;i<k;i++){
+    const c=i%nc, r=(i/nc)|0;
+    S.planks.push({ x:-2.5+(nc>1?c*(5/(nc-1)):2.5), z:f.z+0.9+r*((f.len-1.8)/2) });
+  }
+  Sfx.dive(); vibe(30); S.shake=3;
+  toast('BRIDGE!','good');
+  addFloat(S.cx,3.0,f.z,'−'+k,'#ffd54a');
+}
+
+/* ========================= FINALE ======================================== */
+/* Stop the formation so its *front rank* — not its centre — lands just short
+   of the wall, otherwise a big crowd's leading bodies clip through it. */
+function wallStop(){ return WALLZ - 0.9 - crowdR(S.bodies.length)*1.15; }
+function startSmash(){
+  S.phase='smash'; S.cz=wallStop(); S.tx=clampX(S.tx*0.35);
+  S.toBreak=Math.min(S.bricks.length, Math.floor(S.count/CONFIG.brickCost));
+  S.nextHit=0.18; S.resolveAt=S.time+0.4; Sfx.impact(); S.shake=9; vibe(50);
+}
+function breakBrick(){
+  const idx=S.order[S.brokeN++];
+  const b=S.bricks[idx]; b.gone=true;
+  S.debris.push({ x:b.x,y:b.y,z:b.z, vx:rnd(-3,3), vy:rnd(4,8), vz:rnd(-9,-4),
+                  rot:0, rv:rnd(-11,11), col:b.col, age:0, life:1.3, brick:[b.w,b.h] });
+  shrink(CONFIG.brickCost,'smash');
+  spark(b.x,b.y,b.z,5,DUST,170,0.55,10);
+  Sfx.brick(S.brokeN); S.shake=Math.max(S.shake,4.5);
+  if(S.brokeN%4===0) vibe(15);
+}
+function resolveWall(){
+  const left=S.bricks.length-S.brokeN;
+  if(left<=0){
+    S.win=true; S.phase='through'; Sfx.win(); vibe([40,50,40]);
+    confetti(); toast('BREAKTHROUGH!','good');
+  } else {
+    S.win=false; S.phase='held'; Sfx.hold(); vibe(70); S.shake=6;
+    toast(left<=5?'SO CLOSE!':'WALL HOLDS!','bad');
+  }
+  S.endPending=true; S.endAt=S.time+CONFIG.endPause;
+}
+function showEnd(){
+  S.phase='over'; S.endPending=false;
+  const left=S.bricks.length-S.brokeN;
+  $('endIcon').textContent = S.win?'💥':'🧱';
+  $('endTitle').textContent = S.win?'Wall smashed!':(left<=5?'So close!':'The wall held.');
+  const bricks=left+' '+(left===1?'brick':'bricks')+' left standing.';
+  $('endSub').textContent = S.win
+    ? 'You brought '+S.count+' through. Bigger crowds, bigger walls in the app.'
+    : S.sawHits>=8 ? 'The saws took '+S.sawHits+' runners. '+bricks
+                   : bricks+' Pick better gates in the app.';
+  $('end').classList.add('show');
+}
+
+/* ========================= AUTOPILOT ===================================== */
+/* Until the player touches the screen the crowd steers itself, so an
+   untouched creative still plays a clean optimal run to the end card. */
+function autoTarget(){
+  for(const f of S.feat){
+    const d=f.z-S.cz;
+    if(d<-1.5) continue;
+    if(d>26) break;
+    if(f.t==='gate'&&!f.done) return opApply(S.count,f.L)>=opApply(S.count,f.R) ? -1.5 : 1.5;
+    if(f.t==='saw'){ if(Math.abs(S.tx-f.x)<2.2) return clampX(f.x+(f.x>0?-2.9:2.9)); continue; }
+  }
+  return S.tx;
+}
+
+/* ========================= UPDATE (headless-steppable) =================== */
+function update(dt){
+  S.time+=dt;
+
+  if(S.phase==='run'){
+    S.pz=S.cz; S.cz+=CONFIG.speed*dt;
+    if(!S.touched){
+      const t=autoTarget();
+      S.tx += clamp(t-S.tx, -CONFIG.steer*dt, CONFIG.steer*dt);
+    }
+    for(const f of S.feat){
+      if(f.t==='gate'&&!f.done&&S.pz<f.z&&S.cz>=f.z){ f.done=true; applyGate(f); }
+      else if(f.t==='saw'){ f.a+=dt*9; if(Math.abs(S.cz-f.z)<1.7) sawCut(f); }
+      else if(f.t==='pit'&&!f.done&&S.cz>=f.z-1.3){ f.done=true; bridge(f); }
+      else if(f.t==='wall'&&S.cz>=wallStop()){ startSmash(); break; }
+    }
+    rescueCheck(dt);
+  } else if(S.phase==='smash'){
+    S.nextHit-=dt;
+    if(S.brokeN<S.toBreak){ if(S.nextHit<=0){ S.nextHit=CONFIG.smashStep; breakBrick(); } }
+    else if(!S.resolved && S.time>=S.resolveAt){ S.resolved=true; resolveWall(); }
+  } else if(S.phase==='through'){
+    S.cz+=CONFIG.speed*dt;
+  }
+
+  S.cx += (S.tx-S.cx)*Math.min(1,dt*CONFIG.follow);
+  // finale framing: drop and pull the camera back so the wall fills the shot
+  S.camK += ((S.phase==='run'?0:1)-S.camK)*Math.min(1,dt*2.2);
+
+  // crowd bodies chase their spiral slot around the formation centre
+  const kk=Math.min(1,dt*6.5);
+  for(let i=0;i<S.bodies.length;i++){
+    const b=S.bodies[i], s=SLOT[i];
+    b.x += (S.cx+s[0]-b.x)*kk;
+    b.z += (S.cz+s[1]-b.z)*kk;
+    b.hop += dt*(11+(i%5)*0.5);
+  }
+  for(let i=S.debris.length-1;i>=0;i--){
+    const p=S.debris[i]; p.age+=dt;
+    p.vy-=(p.dive?9:17)*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt; p.rot+=p.rv*dt;
+    if(p.age>p.life||p.y<-4) S.debris.splice(i,1);
+  }
+  for(let i=S.floats.length-1;i>=0;i--){
+    const f=S.floats[i]; f.age+=dt; f.wy+=1.5*dt; if(f.age>f.life) S.floats.splice(i,1);
+  }
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt;
+    if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=880*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+  }
+  S.shake=Math.max(0,S.shake-dt*22);
+
+  if(S.endPending && S.time>=S.endAt) showEnd();
+  if(S.phase!=='over' && S.time>CONFIG.autoEnd) showEnd();
+}
+
+/* ========================= RENDER ======================================== */
+function drawBox(x,y,z,sx,sy,sz,col,rot,axis){
+  gl.uniformMatrix4fv(uM,false,modelM(x,y,z,sx,sy,sz,rot,axis));
+  gl.uniformMatrix3fv(uNrm,false,nrmMat(rot,axis));
+  gl.vertexAttrib3f(aCol,col[0],col[1],col[2]);
+  gl.drawElements(gl.TRIANGLES,36,gl.UNSIGNED_SHORT,0);
+}
+function crowdPass(n,sx,sy,sz,biasY,offY,constCol){
+  gl.uniform3f(uScale,sx,sy,sz);
+  gl.uniform4f(uMB,0,biasY,0,offY);
+  gl.uniformMatrix4fv(uM,false,M_ID);
+  gl.uniformMatrix3fv(uNrm,false,N_ID);
+  if(ext && !S.noInst){
+    gl.enableVertexAttribArray(aOff);
+    if(constCol){ gl.disableVertexAttribArray(aCol); gl.vertexAttrib3f(aCol,constCol[0],constCol[1],constCol[2]); }
+    else gl.enableVertexAttribArray(aCol);
+    ext.drawElementsInstancedANGLE(gl.TRIANGLES,36,gl.UNSIGNED_SHORT,0,n);
+    gl.disableVertexAttribArray(aOff); gl.disableVertexAttribArray(aCol);
+  } else {
+    const lim=Math.min(n,70);                          // no instancing: bound the draw calls
+    if(constCol) gl.vertexAttrib3f(aCol,constCol[0],constCol[1],constCol[2]);
+    for(let i=0;i<lim;i++){
+      const o=i*6;
+      gl.vertexAttrib3f(aOff,instData[o],instData[o+1],instData[o+2]);
+      if(!constCol) gl.vertexAttrib3f(aCol,instData[o+3],instData[o+4],instData[o+5]);
+      gl.drawElements(gl.TRIANGLES,36,gl.UNSIGNED_SHORT,0);
+    }
+  }
+  gl.vertexAttrib3f(aOff,0,0,0);
+  gl.uniform3f(uScale,1,1,1); gl.uniform4f(uMB,0,0,0,1);
+}
+function render(){
+  if(!gl) return;
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+
+  // finale: a small dolly plus a 28% zoom-in, so the wall reads big without
+  // flattening the pitch into a screenful of empty sky
+  const j=S.shake*0.011, k=S.camK;
+  const eye=[S.cx*0.55+(j?rnd(-j,j):0), 6.3+0.8*land-0.8*k+(j?rnd(-j,j):0),
+             S.cz-10.6-3.6*land-0.5*k];
+  VP=mul(persp(fov*(1-0.28*k),vw/vh,0.5,260),
+         lookAt(eye,[S.cx*0.32,1.35+0.25*k,S.cz+4.2+3.5*k],[0,1,0]));
+  gl.uniformMatrix4fv(uVP,false,VP);
+  gl.uniform2f(uFogR,S.cz+28,46);
+  gl.uniform1f(uAlpha,1);
+  gl.uniform3f(uScale,1,1,1); gl.uniform4f(uMB,0,0,0,1);
+  gl.vertexAttrib3f(aOff,0,0,0);
+  gl.depthMask(true); gl.disable(gl.BLEND);
+
+  const RH=CONFIG.roadHalf, pit=S.feat.find(f=>f.t==='pit');
+  const far=WALLZ+130;              // past the fog end, so no visible road edge
+
+  // ---- ground & road (road surface is exactly y=0) -----------------------
+  // the ground runs far past the fog end so its far edge is fully fogged out
+  drawBox(0,-0.40,S.cz+150,220,0.4,520,C.grass);
+  drawBox(0,-0.15,(pit.z-30)/2, RH*2, 0.3, pit.z+30, C.road);
+  drawBox(0,-0.15,(far+pit.z+pit.len)/2, RH*2, 0.3, far-pit.z-pit.len, C.road);
+  drawBox(0,-1.75,pit.z+pit.len/2, RH*2, 3.2, pit.len, C.pit);       // the hole (top clears the grass plane)
+  drawBox(-RH-0.12,0.25,(far-30)/2,0.24,0.5,far+40,C.rail);
+  drawBox( RH+0.12,0.25,(far-30)/2,0.24,0.5,far+40,C.rail);
+  const z0=Math.floor((S.cz-8)/3)*3;
+  for(let z=z0; z<S.cz+46; z+=3){
+    if(z>pit.z-1&&z<pit.z+pit.len+1) continue;
+    drawBox(0,0.008,z,0.12,0.016,1.5,C.line);
+  }
+  for(const p of S.planks) drawBox(p.x,-0.20,p.z,0.62,0.2,1.05,C.plank);
+
+  // ---- hazards & wall ----------------------------------------------------
+  for(const f of S.feat){
+    if(f.t!=='saw'||Math.abs(f.z-S.cz)>52) continue;
+    drawBox(f.x,0.60,f.z,0.3,1.2,0.3,C.rail);          // reaches the hub, no floating blade
+    for(let k=0;k<3;k++) drawBox(f.x,1.25,f.z,2.3,0.30,0.16,C.blade,f.a+k*Math.PI/3,'z');
+    drawBox(f.x,1.25,f.z,0.5,0.5,0.24,C.hub);
+  }
+  if(WALLZ-S.cz<70){
+    for(const b of S.bricks) if(!b.gone) drawBox(b.x,b.y,b.z,b.w,b.h,0.7,b.col);
+    drawBox(-RH-0.42,1.60,WALLZ,0.8,3.2,1.0,[0.46,0.43,0.47]);       // flanking pillars
+    drawBox( RH+0.42,1.60,WALLZ,0.8,3.2,1.0,[0.46,0.43,0.47]);
+  }
+  for(const p of S.debris){
+    const s=p.brick?p.brick:[BODY.w,BODY.h];
+    drawBox(p.x,p.y,p.z,s[0],s[1],p.brick?0.6:BODY.d,p.col,p.rot,'z');
+  }
+
+  // ---- the crowd (3 instanced passes: shadow, body, head) ----------------
+  const n=S.bodies.length;
+  if(n){
+    for(let i=0;i<n;i++){
+      const b=S.bodies[i], o=i*6;
+      instData[o]=b.x; instData[o+1]=0.02+Math.abs(Math.sin(b.hop))*0.13; instData[o+2]=b.z;
+      instData[o+3]=b.col[0]; instData[o+4]=b.col[1]; instData[o+5]=b.col[2];
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER,instBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER,0,instData.subarray(0,n*6));
+    crowdPass(n,0.30,0.02,0.26, 0.028, 0, C.shadow);                 // offY 0 pins shadows down
+    crowdPass(n,BODY.w,BODY.h,BODY.d, BODY.y, 1, null);
+    crowdPass(n,HEAD.s,HEAD.s,HEAD.s, HEAD.y, 1, C.head);
+  }
+
+  // ---- gates last: translucent, no depth write ---------------------------
+  gl.enable(gl.BLEND); gl.depthMask(false);
+  for(const f of S.feat){
+    if(f.t!=='gate'||f.done||f.z-S.cz>52||f.z-S.cz<-3) continue;
+    gl.uniform1f(uAlpha,0.52);
+    drawBox(-RH/2,1.25,f.z, RH,2.5,0.12, opGood(f.L)?C.good:C.bad);
+    drawBox( RH/2,1.25,f.z, RH,2.5,0.12, opGood(f.R)?C.good:C.bad);
+    gl.uniform1f(uAlpha,1);
+    drawBox(0,1.35,f.z,0.16,2.7,0.3,C.post);
+    drawBox(-RH,1.35,f.z,0.16,2.7,0.3,C.post);
+    drawBox( RH,1.35,f.z,0.16,2.7,0.3,C.post);
+    drawBox(0,2.62,f.z,RH*2+0.16,0.22,0.3,C.post);
+  }
+  gl.depthMask(true); gl.disable(gl.BLEND);
+
+  overlay();
+}
+
+/* ---- 2D overlay: gate labels, crowd size, floats, particles -------------- */
+function txt(s,x,y,size,fill,sw){
+  octx.font='900 '+size+'px system-ui,-apple-system,sans-serif';
+  octx.textAlign='center'; octx.textBaseline='middle';
+  octx.lineWidth=sw||Math.max(3,size*0.16); octx.lineJoin='round';
+  octx.strokeStyle='rgba(0,0,0,.45)'; octx.strokeText(s,x,y);
+  octx.fillStyle=fill; octx.fillText(s,x,y);
+}
+function overlay(){
+  octx.clearRect(0,0,vw,vh);
+  const RH=CONFIG.roadHalf;
+
+  for(const f of S.feat){
+    if(f.t!=='gate'||f.done||f.z-S.cz>50||f.z-S.cz<-2) continue;
+    const k=pxPerUnit(0,1.3,f.z);
+    if(k<6) continue;
+    octx.globalAlpha=clamp((50-(f.z-S.cz))/16,0,1);
+    for(const [side,o] of [[-RH/2,f.L],[RH/2,f.R]]){
+      const p=project(side,1.35,f.z);
+      if(p[2]<=0.1) continue;
+      txt(opLabel(o),p[0],p[1],Math.min(k*0.95,88),'#fff');
+    }
+    octx.globalAlpha=1;
+  }
+
+  if((S.phase==='run'||S.phase==='through')&&S.bodies.length){
+    const rad=crowdR(S.bodies.length);
+    // anchored to the near edge of the crowd: keeps it low in frame and clear
+    // of the gate labels ahead, and it ducks further under the wall in the finale
+    const p=project(S.cx,1.7-1.0*S.camK,S.cz-rad*1.0);
+    if(p[2]>0.1) txt(String(S.count),p[0],p[1],clamp(pxPerUnit(S.cx,2,S.cz)*0.8,20,64),'#ffffff');
+  }
+
+  for(const f of S.floats){
+    const p=project(f.wx,f.wy,f.wz);
+    if(p[2]<=0.1) continue;
+    const sz=clamp(pxPerUnit(f.wx,f.wy,f.wz)*0.6,16,40);
+    octx.globalAlpha=1-f.age/f.life;
+    // once a float drifts past the camera its anchor flies off-screen — pin it
+    txt(f.txt, clamp(p[0], sz*1.8, vw-sz*1.8), p[1], sz, f.color);
+  }
+  octx.globalAlpha=1;
+
+  for(const p of S.parts){
+    octx.globalAlpha=1-p.age/p.life; octx.fillStyle=p.color;
+    octx.fillRect(p.x-p.r, p.y-p.r/2, p.r*2, p.r);
+  }
+  octx.globalAlpha=1;
+}
+
+/* ========================= INPUT ========================================= */
+function grab(e){
+  Sfx.ensure();
+  S.dragging=true; S.lastPx=e.clientX;
+  try{ fx.setPointerCapture(e.pointerId); }catch(err){}
+}
+function move(e){
+  if(!S.dragging) return;
+  const d=(e.clientX-S.lastPx)/vw*CONFIG.dragSpan;
+  S.lastPx=e.clientX;
+  if(Math.abs(d)>0.001) S.touched=true;
+  S.tx=clampX(S.tx+d);
+}
+function drop(){ S.dragging=false; }
+fx.addEventListener('pointerdown',grab);
+fx.addEventListener('pointermove',move);
+fx.addEventListener('pointerup',drop);
+fx.addEventListener('pointercancel',drop);
+addEventListener('keydown',e=>{
+  if(e.code==='ArrowLeft'||e.code==='ArrowRight'){
+    Sfx.ensure(); S.touched=true;
+    S.tx=clampX(S.tx+(e.code==='ArrowLeft'?-0.7:0.7));
+  }
+});
+// guard on cancelable: a non-cancelable touchstart (mid-scroll) logs a console error.
+// guard on .btn: a cancelled touchstart also cancels the click that follows it,
+// which would kill the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!e.cancelable) return;
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* ========================= MAIN LOOP ===================================== */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt); render();
+  $('hand').classList.toggle('show', S.phase==='run'&&!S.touched&&S.time>1.0);
+}
+function start(){ $('barLbl').textContent='TARGET '+TARGET; newGame(); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* debug hooks for automated testing */
+window.__game={ S, CONFIG, TRACK, TARGET, newGame, opApply, autoTarget,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); render(); },
+  setX:x=>{ S.touched=true; S.tx=clampX(x); },
+  auto:()=>{ S.touched=false; },
+  end:showEnd };
+</script>
+</body>
+</html>

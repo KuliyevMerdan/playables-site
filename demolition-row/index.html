@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Demolition Row — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#141821; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(25px,5.7vw); font-weight:900; letter-spacing:3px; color:#ffb020;
+    text-shadow:0 2px 0 #7a4a00, 0 4px 12px rgba(0,0,0,.6); }
+  #sub { margin-top:2px; font-size:12px; font-weight:700; letter-spacing:3px; color:#8792a5; }
+  #charges { margin-top:6px; display:inline-flex; align-items:center; gap:8px; padding:5px 15px; border-radius:16px;
+    background:rgba(0,0,0,.34); color:#fff; font-weight:800; font-size:15px; transition:transform .12s; }
+  #charges .d { width:14px; height:14px; border-radius:50%; background:rgba(255,255,255,.22); transition:background .15s; }
+  #charges .d.on { background:radial-gradient(circle at 34% 30%, #ffd9a0 0%, #ff6a3d 55%, #a52c08 100%);
+    box-shadow:0 0 8px rgba(255,106,61,.8); }
+  #charges.pop { transform:scale(1.2); }
+
+  @media (orientation:portrait) and (max-height:620px){
+    #title { font-size:min(19px,5.2vw); letter-spacing:2px; }
+    #sub { font-size:10px; letter-spacing:2px; }
+    #charges { margin-top:3px; padding:3px 11px; font-size:13px; }
+  }
+  @media (orientation:landscape) and (max-height:520px){
+    #hdr { top:calc(4px + env(safe-area-inset-top)); }
+    #title { font-size:19px; letter-spacing:2px; }
+    #sub { font-size:10px; display:inline-block; margin-left:8px; }
+    #charges { margin:0 0 0 9px; padding:3px 11px; font-size:13px; vertical-align:middle; }
+  }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- Toast ---------- */
+  #toast { position:absolute; top:15%; left:0; right:0; text-align:center; font-size:min(34px,7.8vw); font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.45), 0 8px 24px rgba(0,0,0,.6);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#8affc1; } #toast.bad { color:#ff8a6a; } #toast.help { color:#ffd98a; }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    background:radial-gradient(ellipse at 50% 30%, #4a3a24 0%, #14100b 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:94px; height:94px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:50px; background:linear-gradient(160deg,#ffd9a0,#e08a20); box-shadow:0 10px 30px rgba(0,0,0,.55), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:min(30px,7vw); font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.45); }
+  #endStars { font-size:min(28px,6.5vw); letter-spacing:5px; }
+  #end p  { color:#a89a86; font-size:16px; margin-top:-4px; text-align:center; padding:0 34px; line-height:1.35; }
+  #cta { margin-top:6px; padding:18px 60px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#8a7f70; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="hdr"><div id="title">DEMOLITION ROW</div><div id="sub">SITE 1 / 2</div>
+  <div id="charges"><span class="d"></span><span class="d"></span><span id="chTxt">PLACE 2 CHARGES</span></div></div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="end">
+  <div class="icon">🧨</div>
+  <h1>Site cleared!</h1>
+  <div id="endStars">🧨🧨</div>
+  <p id="endSub">2 sites levelled.</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Watch again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   DEMOLITION ROW — self-contained playable ad (charge-placement collapse)
+   Scene designed in 720x1280 virtual units, letterbox-scaled to viewport.
+
+   The one simulation class the rest of this workspace does not have: a real
+   2D rigid-body solver. Oriented boxes, SAT + face clipping for manifolds,
+   sequential impulses with warm starting, Baumgarte position correction and
+   body sleeping — a few hundred lines, no dependencies.
+
+   DETERMINISM IS A MECHANIC HERE, not an implementation detail. Fixed 1/120
+   step, fixed iteration order, no RNG anywhere inside the solver: the same
+   pair of charges always produces the same rubble. That is what lets
+   __game.stress() enumerate every charge pair headlessly and prove the level
+   is a real decision rather than a coin flip. Randomness exists only in dust
+   particles, which are outside the simulation.
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL:'https://apps.apple.com/app/id000000000',  // replace per campaign
+  H:1/120,               // fixed physics step
+  iters:10,              // solver iterations
+  grav:1900,             // px/s^2
+  beta:0.28, slop:0.6,   // split-impulse position correction
+  fric:0.58, rest:0.02,
+  sleepV:26, sleepW:0.30, sleepT:0.45,   // rest thresholds
+  blastImp:480,          // impulse a charge gives its neighbours
+  settleMax:4.0,         // s to wait for rest before scoring anyway
+  resultHold:1.9,        // s on the outcome banner
+  idleHint:2.6,          // s idle -> hand on the right pair
+  idleAuto:6.0,          // s idle -> the ad plays itself
+  autoStep:0.85,         // s between autopilot taps
+  autoEnd:100,           // s -> force end card
+};
+
+/* ---------- tiny helpers ---------- */
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const ease=t=>t*t*(3-2*t);
+const $=id=>document.getElementById(id);
+const vibe=p=>{ try{ navigator.vibrate&&navigator.vibrate(p); }catch(e){} };
+
+/* =========================================================================
+   AUDIO — synthesized, no assets
+   ========================================================================= */
+const Sfx={
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx&&this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when,o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  noise(dur,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const n=Math.floor(this.ctx.sampleRate*dur), buf=this.ctx.createBuffer(1,n,this.ctx.sampleRate), d=buf.getChannelData(0);
+    let v=0;                                   // brown-ish noise: rubble, not hiss
+    for(let i=0;i<n;i++){ v=(v+(Math.random()*2-1)*0.16); v=clamp(v,-1,1); d[i]=v*(1-i/n); }
+    const s=this.ctx.createBufferSource(), g=this.ctx.createGain();
+    s.buffer=buf; g.gain.setValueAtTime(vol,this.ctx.currentTime+when);
+    s.connect(g); g.connect(this.ctx.destination); s.start(this.ctx.currentTime+when);
+  },
+  place(){ this.tone(520,760,0.07,'square',0.06); },
+  lift(){  this.tone(700,420,0.07,'triangle',0.05); },
+  arm(){   [660,880].forEach((f,i)=>this.tone(f,f,0.09,'square',0.07,i*0.08)); },
+  boom(){  this.tone(90,28,0.55,'sawtooth',0.2); this.tone(200,40,0.3,'square',0.1); this.noise(0.7,0.22); },
+  rumble(){ this.noise(1.1,0.12,0.05); this.tone(56,34,1.0,'sine',0.09,0.05); },
+  good(){  [523,659,784,1047].forEach((f,i)=>this.tone(f,f,0.17,'triangle',0.14,i*0.07)); },
+  bad(){   this.tone(300,150,0.32,'sawtooth',0.09); },
+  win(){   [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.20,'triangle',0.17,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* =========================================================================
+   CTA / MRAID
+   ========================================================================= */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{ $('end').classList.remove('show'); newRun(); });
+
+/* =========================================================================
+   RENDER SETUP — 720x1280 scene, letterboxed
+   ========================================================================= */
+const cv=$('game'), ctx=cv.getContext('2d');
+const SW=720, SH=1280;
+let vw=0,vh=0,dpr=1,scale=1,ox=0,oy=0;
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';   // fixed inset:0 alone won't size a canvas
+  scale=Math.min(vw/SW,vh/SH); ox=(vw-SW*scale)/2; oy=(vh-SH*scale)/2;
+}
+addEventListener('resize',resize); resize();
+const toScene=(px,py)=>[(px-ox)/scale,(py-oy)/scale];
+/* The physics lives in world units and every line/pair threshold was measured
+   there, so the framing is a CAMERA rather than a rebuild: each site picks a
+   zoom that makes its own structure fill the scene. Only rendering and hit
+   testing go through it — nothing the solver sees ever moves. */
+const CAM={k:1.5, ax:360, ay:1060, sx:360, sy:1090};
+const w2sx=x=>CAM.sx+(x-CAM.ax)*CAM.k, w2sy=y=>CAM.sy+(y-CAM.ay)*CAM.k;
+const s2wx=x=>CAM.ax+(x-CAM.sx)/CAM.k, s2wy=y=>CAM.ay+(y-CAM.sy)/CAM.k;
+// leave slack on both sides: at a tighter zoom the collapse threw debris off
+// the left edge of the screen
+function camFor(topY){ CAM.k=clamp((CAM.sy-330)/Math.max(60,CAM.ay-topY),1.15,1.8); }
+
+/* =========================================================================
+   PHYSICS — oriented boxes, SAT manifolds, sequential impulses.
+   Everything below is index-ordered and RNG-free so a run is reproducible.
+   ========================================================================= */
+function Body(x,y,w,h,opt){
+  opt=opt||{};
+  const b={x,y,a:opt.a||0,vx:0,vy:0,w:0,bvx:0,bvy:0,bw:0,hw:w/2,hh:h/2,
+           st:!!opt.static, dens:opt.dens||1, tag:opt.tag||'', kind:opt.kind||'brick',
+           sleep:0, asleep:false, id:0, ox:x, oy:y, oa:opt.a||0};
+  const m=b.st?0:(w*h*b.dens)/1000;
+  b.im=m?1/m:0;
+  const I=m?m*(w*w+h*h)/12:0;
+  b.ii=I?1/I:0;
+  return b;
+}
+function corners(b){
+  const c=Math.cos(b.a), s=Math.sin(b.a), hw=b.hw, hh=b.hh;
+  return [[b.x+c*hw-s*hh, b.y+s*hw+c*hh],
+          [b.x-c*hw-s*hh, b.y-s*hw+c*hh],
+          [b.x-c*hw+s*hh, b.y-s*hw-c*hh],
+          [b.x+c*hw+s*hh, b.y+s*hw-c*hh]];
+}
+/** outward normal of the face running from corner i to i+1 */
+function faceN(cs,i,b){
+  const a=cs[i], c=cs[(i+1)%4];
+  let nx=c[1]-a[1], ny=-(c[0]-a[0]);
+  const L=Math.hypot(nx,ny)||1; nx/=L; ny/=L;
+  if((a[0]-b.x)*nx+(a[1]-b.y)*ny<0){ nx=-nx; ny=-ny; }
+  return [nx,ny];
+}
+function maxSep(A,B){
+  const ca=corners(A), cb=corners(B);
+  let best=-1e9, bi=0;
+  for(let i=0;i<4;i++){
+    const n=faceN(ca,i,A), v=ca[i];
+    let mn=1e9;
+    for(let k=0;k<4;k++){ const d=(cb[k][0]-v[0])*n[0]+(cb[k][1]-v[1])*n[1]; if(d<mn) mn=d; }
+    if(mn>best){ best=mn; bi=i; }
+  }
+  return {sep:best, face:bi};
+}
+function clipSeg(v,n,o){
+  const out=[];
+  const d0=n[0]*v[0][0]+n[1]*v[0][1]-o, d1=n[0]*v[1][0]+n[1]*v[1][1]-o;
+  if(d0<=0) out.push(v[0]);
+  if(d1<=0) out.push(v[1]);
+  if(d0*d1<0){ const t=d0/(d0-d1);
+    out.push([v[0][0]+t*(v[1][0]-v[0][0]), v[0][1]+t*(v[1][1]-v[0][1])]); }
+  return out.length>=2?[out[0],out[1]]:null;
+}
+/** Speculative margin: keep a contact alive for a fraction of a pixel of
+    SEPARATION, not only on overlap. Without it a resting stack flickers —
+    the solver pushes the boxes a hair apart, the contact vanishes next step,
+    the box free-falls for one step and re-contacts. That cycle injects energy
+    every few steps, which is why the stack crept and never slept. A separated
+    point costs nothing: its bias is zero and the normal impulse clamps at >= 0. */
+const MARGIN=0.8;
+/** contact manifold between two boxes; n points from A to B */
+function collide(A,B){
+  const sa=maxSep(A,B); if(sa.sep>MARGIN) return null;
+  const sb=maxSep(B,A); if(sb.sep>MARGIN) return null;
+  let ref=A, inc=B, fi=sa.face, flip=false;
+  if(sb.sep>sa.sep+0.02){ ref=B; inc=A; fi=sb.face; flip=true; }
+  const cr=corners(ref), ci=corners(inc);
+  const n=faceN(cr,fi,ref), v1=cr[fi], v2=cr[(fi+1)%4];
+  let bd=1e9, ii=0;
+  for(let i=0;i<4;i++){ const m=faceN(ci,i,inc); const d=m[0]*n[0]+m[1]*n[1]; if(d<bd){ bd=d; ii=i; } }
+  let seg=[ci[ii],ci[(ii+1)%4]];
+  let t=[v2[0]-v1[0], v2[1]-v1[1]]; const L=Math.hypot(t[0],t[1])||1; t=[t[0]/L,t[1]/L];
+  seg=clipSeg(seg,[-t[0],-t[1]],-(v1[0]*t[0]+v1[1]*t[1])); if(!seg) return null;
+  seg=clipSeg(seg,t,v2[0]*t[0]+v2[1]*t[1]);                if(!seg) return null;
+  const pts=[];
+  for(const p of seg){
+    const sep=(p[0]-v1[0])*n[0]+(p[1]-v1[1])*n[1];
+    if(sep<=MARGIN) pts.push({x:p[0],y:p[1],pen:-sep,Pn:0,Pt:0});
+  }
+  if(!pts.length) return null;
+  return {A,B,n:flip?[-n[0],-n[1]]:n,pts};
+}
+
+const World={
+  bodies:[], cache:{},
+  clear(){ this.bodies=[]; this.cache={}; },
+  add(b){ b.id=this.bodies.length; this.bodies.push(b); return b; },
+  remove(b){ const i=this.bodies.indexOf(b); if(i>=0) this.bodies.splice(i,1);
+             this.bodies.forEach((x,k)=>x.id=k); this.cache={}; },
+  wake(b){ if(!b.st){ b.asleep=false; b.sleep=0; } },
+  step(h){
+    const B=this.bodies;
+    for(const b of B) if(!b.st&&!b.asleep) b.vy+=CONFIG.grav*h;
+
+    const man=[];                                        // broad + narrow phase
+    for(let i=0;i<B.length;i++) for(let j=i+1;j<B.length;j++){
+      const a=B[i], b=B[j];
+      if(a.st&&b.st) continue;
+      if(a.asleep&&b.asleep) continue;
+      if(a.st&&b.asleep) continue;
+      if(b.st&&a.asleep) continue;
+      const ra=Math.hypot(a.hw,a.hh), rb=Math.hypot(b.hw,b.hh);
+      if(Math.abs(a.x-b.x)>ra+rb+MARGIN||Math.abs(a.y-b.y)>ra+rb+MARGIN) continue;
+      const m=collide(a,b);
+      if(m){
+        // wake only on contact with something actually MOVING. Waking on the
+        // mere existence of a contact means a resting stack wakes itself every
+        // step and nothing ever sleeps — which also stops atRest() from ever
+        // being true, so the settle check falls back to its timeout.
+        if(a.asleep&&!b.asleep&&(Math.hypot(b.vx,b.vy)>CONFIG.sleepV||Math.abs(b.w)>CONFIG.sleepW)) this.wake(a);
+        if(b.asleep&&!a.asleep&&(Math.hypot(a.vx,a.vy)>CONFIG.sleepV||Math.abs(a.w)>CONFIG.sleepW)) this.wake(b);
+        man.push(m);
+      }
+    }
+    // pre-step: effective mass, bias, warm start
+    for(const m of man){
+      const key=m.A.id*997+m.B.id, old=this.cache[key];
+      m.pts.forEach((p,k)=>{
+        // match warm-start impulses by PROXIMITY, not by index. Clipping can
+        // emit the two contact points in either order between steps; inheriting
+        // by index then injects a stale impulse at the wrong corner, which does
+        // not read as jitter — it reads as a stack slowly creeping over, with
+        // the drift growing the higher up the stack you look.
+        if(old){
+          let bd=36, hit=null;
+          for(const o of old){ const dx=o.x-p.x, dy=o.y-p.y, d=dx*dx+dy*dy; if(d<bd){ bd=d; hit=o; } }
+          if(hit){ p.Pn=hit.Pn; p.Pt=hit.Pt; }
+        }
+        p.rax=p.x-m.A.x; p.ray=p.y-m.A.y; p.rbx=p.x-m.B.x; p.rby=p.y-m.B.y;
+        const n=m.n, t=[-n[1],n[0]];
+        const rnA=p.rax*n[1]-p.ray*n[0], rnB=p.rbx*n[1]-p.rby*n[0];
+        p.kn=1/(m.A.im+m.B.im+m.A.ii*rnA*rnA+m.B.ii*rnB*rnB);
+        const rtA=p.rax*t[1]-p.ray*t[0], rtB=p.rbx*t[1]-p.rby*t[0];
+        p.kt=1/(m.A.im+m.B.im+m.A.ii*rtA*rtA+m.B.ii*rtB*rtB);
+        p.bias=CONFIG.beta/h*Math.max(0,p.pen-CONFIG.slop);
+        p.Pb=0;
+        const px=p.Pn*n[0]+p.Pt*t[0], py=p.Pn*n[1]+p.Pt*t[1];
+        appl(m.A,-px,-py,p.rax,p.ray); appl(m.B,px,py,p.rbx,p.rby);
+      });
+    }
+    for(const b of B){ b.bvx=0; b.bvy=0; b.bw=0; }   // pseudo-velocities: position
+                                                     // correction lives here and
+                                                     // never touches real motion
+    for(let it=0;it<CONFIG.iters;it++){
+      for(const m of man){
+        const n=m.n, t=[-n[1],n[0]], A=m.A, B=m.B;
+        for(const p of m.pts){
+          let rvx=B.vx-B.w*p.rby-(A.vx-A.w*p.ray);
+          let rvy=B.vy+B.w*p.rbx-(A.vy+A.w*p.rax);
+          const vn=rvx*n[0]+rvy*n[1];
+          let dPn=p.kn*(-vn-CONFIG.rest*vn);
+          const Pn0=p.Pn; p.Pn=Math.max(Pn0+dPn,0); dPn=p.Pn-Pn0;
+          appl(A,-dPn*n[0],-dPn*n[1],p.rax,p.ray); appl(B,dPn*n[0],dPn*n[1],p.rbx,p.rby);
+
+          // split impulse: overlap is pushed out through a parallel set of
+          // pseudo-velocities. Folding it into the real normal impulse (plain
+          // Baumgarte) injects energy that never leaves — measured here as
+          // 64 px/s spikes on a stack that should have been asleep.
+          let bvx=B.bvx-B.bw*p.rby-(A.bvx-A.bw*p.ray);
+          let bvy=B.bvy+B.bw*p.rbx-(A.bvy+A.bw*p.rax);
+          const bvn=bvx*n[0]+bvy*n[1];
+          let dPb=p.kn*(p.bias-bvn);
+          const Pb0=p.Pb; p.Pb=Math.max(Pb0+dPb,0); dPb=p.Pb-Pb0;
+          applB(A,-dPb*n[0],-dPb*n[1],p.rax,p.ray); applB(B,dPb*n[0],dPb*n[1],p.rbx,p.rby);
+
+          rvx=B.vx-B.w*p.rby-(A.vx-A.w*p.ray);
+          rvy=B.vy+B.w*p.rbx-(A.vy+A.w*p.rax);
+          const vt=rvx*t[0]+rvy*t[1];
+          let dPt=p.kt*(-vt);
+          const max=CONFIG.fric*p.Pn, Pt0=p.Pt;
+          p.Pt=clamp(Pt0+dPt,-max,max); dPt=p.Pt-Pt0;
+          appl(A,-dPt*t[0],-dPt*t[1],p.rax,p.ray); appl(B,dPt*t[0],dPt*t[1],p.rbx,p.rby);
+        }
+      }
+    }
+    this.cache={};
+    for(const m of man) this.cache[m.A.id*997+m.B.id]=m.pts.map(p=>({x:p.x,y:p.y,Pn:p.Pn,Pt:p.Pt}));
+
+    for(const b of B){
+      if(b.st||b.asleep) continue;
+      b.x+=(b.vx+b.bvx)*h; b.y+=(b.vy+b.bvy)*h; b.a+=(b.w+b.bw)*h;
+      if(Math.hypot(b.vx,b.vy)<CONFIG.sleepV&&Math.abs(b.w)<CONFIG.sleepW){
+        b.sleep+=h;
+        if(b.sleep>CONFIG.sleepT){ b.asleep=true; b.vx=b.vy=b.w=0; }
+      } else b.sleep=0;
+    }
+  },
+  atRest(){ return this.bodies.every(b=>b.st||b.asleep); },
+};
+function appl(b,px,py,rx,ry){
+  if(b.st) return;
+  b.vx+=px*b.im; b.vy+=py*b.im; b.w+=(rx*py-ry*px)*b.ii;
+}
+function applB(b,px,py,rx,ry){
+  if(b.st) return;
+  b.bvx+=px*b.im; b.bvy+=py*b.im; b.bw+=(rx*py-ry*px)*b.ii;
+}
+
+/* =========================================================================
+   SITES — hand-authored structures. `charges` lists the bodies a charge can
+   be placed on; `best` is the pair the level is designed around and
+   __game.stress() proves it actually wins (and that most pairs do not).
+   ========================================================================= */
+const GROUND_Y=1060;
+const BTN={x:170,y:1120,w:380,h:88};
+
+/** A pillar-and-slab frame, floors stacked bottom-up. Blocks come back in a
+    fixed order — every pillar first (floor 0 left, floor 0 right, floor 1 left,
+    …), then every slab — so a charge index is just `2*floor + side` and the
+    level data stays readable.
+
+    Why a frame and not a column of bricks: a stack of boxes with a block blown
+    out of it does not collapse, it *settles* by one block height and keeps
+    standing. Measured, first attempt: all ten charge pairs left the tower at
+    top≈785 against a 900 line — zero winners, because nothing ever fell over.
+    A slab carried on two slender pillars has somewhere to fall. */
+const PW=30, PH=88, SLH=22;   // pillar w/h, slab h (SH is the scene height)
+function makeFrame(cx,span,floors,sw){   // NOT frame(): that name belongs to the rAF loop
+  const pil=[], slab=[];
+  for(let i=0;i<floors;i++){
+    const py=GROUND_Y-i*(PH+SLH)-PH/2, sy=GROUND_Y-i*(PH+SLH)-PH-SLH/2;
+    pil.push({x:cx-span/2,y:py,w:PW,h:PH},{x:cx+span/2,y:py,w:PW,h:PH});
+    slab.push({x:cx,y:sy,w:sw,h:SLH});
+  }
+  return {blocks:pil.concat(slab), topY:GROUND_Y-(floors-1)*(PH+SLH)-PH-SLH};
+}
+const F1=makeFrame(300,140,3,196), F2=makeFrame(292,104,4,158);
+
+const SITES=[
+  // Lines and the neighbour's distance are NOT guesses: they were read off
+  // __game.stress(), which runs every pair to rest. Site 1 keeps 4 winners of
+  // 10 (forgiving, it teaches), site 2 keeps 4 but clusters them so the losing
+  // pairs miss by a hair, and its 0/4 pair throws the top floors onto the
+  // neighbour — the second failure mode, and the reason the greedy cut is wrong.
+  { name:'SITE 1', line:880, allowed:2,
+    blocks:[...F1.blocks, {x:300,y:F1.topY-29,w:78,h:58,dens:2.2,kind:'tank'}],
+    house:{x:470,y:GROUND_Y-46,w:132,h:92},
+    charges:[0,1,2,3,4], best:[2,3], best3:[0,2,3] },
+
+  { name:'SITE 2', line:884, allowed:2,
+    blocks:[...F2.blocks, {x:322,y:F2.topY-29,w:82,h:58,dens:2.6,kind:'tank'}],
+    house:{x:470,y:GROUND_Y-46,w:126,h:92},
+    charges:[0,1,2,3,5], best:[0,3], best3:[0,2,3] },
+];
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const S={
+  mode:'place', time:0, si:0,
+  picked:[], allowed:2, attempts:0, cleared:0, blasts:0, rescues:0,
+  tower:[], house:null, chargeB:[], outcome:null,
+  settleT:0, quiet:0, resultT:0, shake:0, dust:[], flash:0,
+  lastInput:0, lastAuto:0, autoOn:false, handPh:0, tip:1, timers:[],
+};
+function later(sec,fn){ S.timers.push({t:S.time+sec,fn}); }
+const site=()=>SITES[Math.min(S.si,SITES.length-1)];
+
+function buildSite(i,allowed){
+  const L=SITES[i]; S.si=i;
+  World.clear();
+  World.add(Body(360,GROUND_Y+60,1400,120,{static:true,kind:'ground'}));
+  S.tower=L.blocks.map(b=>World.add(Body(b.x,b.y,b.w,b.h,{dens:b.dens,kind:b.kind||'brick'})));
+  S.house=World.add(Body(L.house.x,L.house.y,L.house.w,L.house.h,{kind:'house'}));
+  S.chargeB=L.charges.map(k=>S.tower[k]);
+  camFor(Math.min(...L.blocks.map(b=>b.y-b.h/2)));
+  S.picked=[]; S.allowed=allowed||L.allowed; S.outcome=null;
+  S.settleT=0; S.quiet=0; S.resultT=0; S.dust=[]; S.mode='place';
+  S.lastInput=S.time; S.lastAuto=S.time; S.handPh=0;
+  $('sub').textContent=`${L.name}  ·  ${i+1} / ${SITES.length}`;
+  hudUpd(false);
+  $('end').classList.remove('show');
+}
+function newRun(){
+  S.time=0; S.cleared=0; S.attempts=0; S.blasts=0; S.rescues=0;
+  S.autoOn=false; S.tip=1; S.timers=[]; S.shake=0; S.flash=0;
+  buildSite(0);
+}
+
+/* =========================================================================
+   ACTIONS
+   ========================================================================= */
+function togglePick(k,byUser){
+  if(S.mode!=='place') return false;
+  if(byUser!==false){ S.lastInput=S.time; S.handPh=0; }
+  const i=S.picked.indexOf(k);
+  if(i>=0){ S.picked.splice(i,1); Sfx.lift(); }
+  else{
+    if(S.picked.length>=S.allowed) return false;
+    S.picked.push(k); Sfx.place(); vibe(8);
+  }
+  S.tip=0; hudUpd(true);
+  return true;
+}
+const armed=()=>S.picked.length===S.allowed;
+
+function detonate(byUser){
+  if(S.mode!=='place'||!armed()) return false;
+  if(byUser!==false){ S.lastInput=S.time; S.handPh=0; }
+  S.mode='boom'; S.blasts++; Sfx.arm();
+  later(0.42,()=>{
+    Sfx.boom(); Sfx.rumble(); vibe([30,50,30]);
+    S.shake=Math.max(S.shake,16); S.flash=1;
+    applyCharges(S.picked);                       // same blast the headless runs use
+    S.mode='settle'; S.settleT=0; S.quiet=0;
+  });
+  return true;
+}
+/** highest point of what is left standing (canvas y: smaller is higher) */
+function towerTop(){
+  let top=1e9;
+  for(const b of S.tower) for(const c of corners(b)) if(c[1]<top) top=c[1];
+  return top===1e9?GROUND_Y:top;
+}
+/** "you hit the neighbour" has to trigger on a visible shove, not only on a
+    demolished house: rubble that slides it 15px or tilts it 7 degrees already
+    reads as a mistake to anyone watching */
+function houseHit(){
+  const h=S.house;
+  return Math.abs(h.a)>0.12 || Math.abs(h.x-h.ox)>14 || h.y<h.oy-8;
+}
+function score(){
+  const top=towerTop(), L=site();
+  S.outcome = houseHit() ? 'house' : (top>L.line ? 'clear' : 'tall');
+  S.mode='result'; S.resultT=0;
+  if(S.outcome==='clear'){
+    S.cleared++; Sfx.good(); vibe([20,40,20]); confetti(360,L.line);
+    toast('SITE CLEARED!','good');
+    later(CONFIG.resultHold,()=>{
+      if(S.si+1<SITES.length) buildSite(S.si+1);
+      else showEnd();
+    });
+  }else{
+    S.attempts++; Sfx.bad();
+    toast(S.outcome==='house'?'THE NEIGHBOUR!':'STILL STANDING','bad');
+    later(CONFIG.resultHold,()=>{
+      // ad-safety: never a loss, and never a loop either. A second miss is
+      // already three charges deep, so the foreman brings the crane and finishes
+      // the job — without this the retry sat at `allowed` 3 for ever and the only
+      // way out of the site was the autoEnd cap.
+      if(S.allowed>=3){
+        S.rescues++; S.cleared++; S.mode='result'; S.outcome='clear';
+        for(const b of S.tower.slice()){ puff(b.x,b.y,10); World.remove(b); }
+        S.tower=[]; S.chargeB=[];
+        Sfx.boom(); S.shake=Math.max(S.shake,12); confetti(360,site().line);
+        toast('FOREMAN FINISHES THE JOB','help');
+        later(CONFIG.resultHold,()=>{
+          if(S.si+1<SITES.length) buildSite(S.si+1); else showEnd();
+        });
+        return;
+      }
+      S.rescues++; toast('FOREMAN OWES YOU ONE — 3 CHARGES','help');
+      buildSite(S.si,3);
+    });
+  }
+}
+/** what the ad taps next; the hint hand points at the same thing */
+function nextAction(){
+  if(S.mode!=='place') return null;
+  // NOT best + "any free charge": measured, adding a third charge usually makes
+  // the result WORSE — it scatters the frame instead of pancaking it (site 1:
+  // the winning pair tops out at 925, the same pair plus one more at 803). The
+  // working triple is declared and stress() checks it.
+  const want=(S.allowed>=3?(site().best3||site().best):site().best).slice();
+  while(want.length<S.allowed){
+    for(let k=0;k<S.chargeB.length;k++) if(want.indexOf(k)<0&&S.chargeB[k]){ want.push(k); break; }
+  }
+  for(const k of want) if(S.picked.indexOf(k)<0 && S.chargeB[k]) return {pick:k};
+  return armed()?{fire:true}:null;
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+function hitCharge(x,y){
+  for(let k=0;k<S.chargeB.length;k++){
+    const b=S.chargeB[k]; if(!b) continue;
+    if(Math.hypot(b.x-x,b.y-y)<46/CAM.k+18) return k;
+  }
+  return -1;
+}
+const inBtn=(x,y)=>x>=BTN.x&&x<=BTN.x+BTN.w&&y>=BTN.y&&y<=BTN.y+BTN.h;
+function pointerDown(e){
+  Sfx.ensure(); S.lastInput=S.time; S.handPh=0; S.autoOn=false;
+  if(S.mode!=='place') return;
+  const p=toScene(e.clientX,e.clientY);
+  if(inBtn(p[0],p[1])&&armed()){ detonate(true); return; }      // button is scene-space
+  const k=hitCharge(s2wx(p[0]),s2wy(p[1]));                     // the world is not
+  if(k>=0) togglePick(k,true);
+}
+cv.addEventListener('pointerdown',pointerDown);
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would break the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element)||!e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* =========================================================================
+   DUST / CONFETTI  (outside the simulation — the only randomness here)
+   ========================================================================= */
+function puff(x,y,n){
+  for(let i=0;i<n;i++) S.dust.push({x:x+rnd(-18,18),y:y+rnd(-18,18),
+    vx:rnd(-150,150),vy:rnd(-170,40),life:rnd(.5,1.1),age:0,r:rnd(5,14),kind:'dust'});
+}
+function confetti(x,y){
+  const cols=['#ffb020','#42d76c','#ff8a6a','#7ee0ff','#ffd98a'];
+  for(let i=0;i<90;i++) S.dust.push({x:x+rnd(-120,120),y,vx:rnd(-380,380),vy:rnd(-720,-240),
+    life:rnd(.9,1.7),age:0,r:rnd(3,6),rot:rnd(0,7),vr:rnd(-9,9),color:cols[i%cols.length],kind:'conf'});
+}
+function updateDust(dt){
+  for(let i=S.dust.length-1;i>=0;i--){
+    const p=S.dust[i]; p.age+=dt;
+    if(p.age>p.life){ S.dust.splice(i,1); continue; }
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    if(p.kind==='dust'){ p.vy+=40*dt; p.vx*=0.97; p.r+=26*dt; }
+    else { p.vy+=980*dt; if(p.rot!==undefined) p.rot+=p.vr*dt; }
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+function hudUpd(pop){
+  const el=$('charges');
+  el.innerHTML='';
+  for(let i=0;i<S.allowed;i++){
+    const d=document.createElement('span');
+    d.className='d'+(i<S.picked.length?' on':''); el.appendChild(d);
+  }
+  const t=document.createElement('span');
+  t.id='chTxt';
+  t.textContent = armed() ? 'READY' : `PLACE ${S.allowed-S.picked.length}`;
+  el.appendChild(t);
+  if(pop){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+}
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  later(1.4,()=>t.classList.remove('show'));
+}
+function showEnd(){
+  S.mode='end';
+  $('endStars').textContent='🧨'.repeat(Math.max(S.cleared,1));
+  $('end').querySelector('h1').textContent = S.cleared>=SITES.length ? 'Site cleared!' : 'Nice bang!';
+  $('endSub').textContent = S.cleared>=SITES.length
+    ? `${S.cleared} sites levelled in ${S.blasts} blast${S.blasts===1?'':'s'}${S.rescues?` — the foreman covered ${S.rescues}`:', no help needed'}.`
+    : `${S.blasts} blast${S.blasts===1?'':'s'}. ${SITES.length-S.cleared} site${SITES.length-S.cleared>1?'s':''} still standing.`;
+  $('end').classList.add('show');
+  Sfx.win();
+}
+
+/* =========================================================================
+   UPDATE — fixed-step physics on a sim-time accumulator
+   ========================================================================= */
+let acc=0;
+function update(dt){
+  S.time+=dt;
+  for(let i=S.timers.length-1;i>=0;i--){
+    if(S.time>=S.timers[i].t){ const fn=S.timers[i].fn; S.timers.splice(i,1); fn(); }
+  }
+  updateDust(dt);
+  if(S.shake>0) S.shake=Math.max(0,S.shake-dt*26);
+  if(S.flash>0) S.flash=Math.max(0,S.flash-dt*3.2);
+  if(S.tip>0&&S.picked.length) S.tip=Math.max(0,S.tip-dt*2);
+  if(S.mode==='place'&&S.time-S.lastInput>=CONFIG.idleHint) S.handPh+=dt;
+
+  acc+=dt;                                            // fixed step keeps runs reproducible
+  let n=0;
+  while(acc>=CONFIG.H&&n<8){ World.step(CONFIG.H); acc-=CONFIG.H; n++; }
+  if(acc>CONFIG.H*8) acc=0;
+
+  if(S.mode==='settle'){
+    S.settleT+=dt;
+    // "everything asleep" is the strict test and one stubborn sliding brick can
+    // hold it off for seconds; scoring when the pile has gone QUIET reads the
+    // same on screen and saves ~3s of dead air per blast
+    let mx=0;
+    for(const b of World.bodies) if(!b.st&&!b.asleep) mx=Math.max(mx,Math.hypot(b.vx,b.vy));
+    S.quiet = mx<34 ? S.quiet+dt : 0;
+    if(S.settleT>0.5&&(World.atRest()||S.quiet>0.4||S.settleT>CONFIG.settleMax)) score();
+  }
+  if(S.mode==='place'&&(S.autoOn||S.time-S.lastInput>CONFIG.idleAuto)){
+    S.autoOn=true;
+    if(S.time-S.lastAuto>CONFIG.autoStep){
+      S.lastAuto=S.time;
+      const a=nextAction();
+      if(a&&a.pick!==undefined) togglePick(a.pick,false);
+      else if(a&&a.fire) detonate(false);
+    }
+  }
+  if(S.time>CONFIG.autoEnd&&S.mode!=='end') showEnd();
+}
+
+/* =========================================================================
+   DRAWING
+   ========================================================================= */
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function txt(s,x,y,f,c,al){ ctx.font=f; ctx.fillStyle=c; ctx.textAlign=al||'left'; ctx.textBaseline='middle'; ctx.fillText(s,x,y); }
+
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,vh);
+  g.addColorStop(0,'#2b3a4a'); g.addColorStop(0.5,'#1b2333'); g.addColorStop(1,'#0f1420');
+  ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+  ctx.save(); ctx.translate(ox,oy); ctx.scale(scale,scale);
+  ctx.translate(CAM.sx,CAM.sy); ctx.scale(CAM.k,CAM.k); ctx.translate(-CAM.ax,-CAM.ay);
+  ctx.fillStyle='rgba(255,255,255,.045)';                       // skyline
+  const sky=[[-20,300,90],[80,240,70],[160,330,110],[250,270,60],[320,350,95],[420,230,80],
+             [510,320,70],[590,260,100],[690,340,80]];
+  for(const s of sky) ctx.fillRect(s[0],GROUND_Y-s[1],s[2],s[1]);
+  ctx.fillStyle='rgba(255,214,120,.05)';
+  for(const s of sky) for(let y=GROUND_Y-s[1]+18;y<GROUND_Y-20;y+=34)
+    for(let x=s[0]+10;x<s[0]+s[2]-10;x+=26) ctx.fillRect(x,y,10,14);
+  ctx.restore();
+}
+function drawGround(){
+  ctx.fillStyle='#2a2f3d'; ctx.fillRect(-700,GROUND_Y,SW+1400,600);
+  ctx.fillStyle='#3a4152'; ctx.fillRect(-700,GROUND_Y,SW+1400,10);
+  ctx.save(); ctx.beginPath(); ctx.rect(-700,GROUND_Y+10,SW+1400,16); ctx.clip();
+  for(let x=-700;x<SW+700;x+=34){ ctx.fillStyle='#ffb020'; ctx.fillRect(x,GROUND_Y+10,17,16);
+    ctx.fillStyle='#1b2030'; ctx.fillRect(x+17,GROUND_Y+10,17,16); }
+  ctx.restore();
+}
+function drawLine(){
+  const y=site().line;
+  ctx.save();
+  ctx.strokeStyle='rgba(255,176,32,.55)'; ctx.lineWidth=4; ctx.setLineDash([18,14]);
+  const L=s2wx(24), R=s2wx(SW-24);
+  ctx.beginPath(); ctx.moveTo(L,y); ctx.lineTo(R,y); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(255,176,32,.9)';
+  ctx.beginPath(); ctx.moveTo(R,y-26); ctx.lineTo(R-56/CAM.k,y-19); ctx.lineTo(R,y-12); ctx.closePath(); ctx.fill();
+  ctx.fillRect(R-1/CAM.k,y-26,4/CAM.k,26);
+  ctx.save(); ctx.translate(R-66/CAM.k,y-19); ctx.scale(1/CAM.k,1/CAM.k);
+  txt('CLEAR BELOW',0,0,'800 15px system-ui','rgba(255,176,32,.9)','right'); ctx.restore();
+  ctx.restore();
+}
+function drawBody(b){
+  ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(b.a);
+  const w=b.hw*2, h=b.hh*2, x=-b.hw, y=-b.hh;
+  if(b.kind==='tank'){
+    const g=ctx.createLinearGradient(x,0,x+w,0);
+    g.addColorStop(0,'#5d6b82'); g.addColorStop(0.45,'#9fb0c8'); g.addColorStop(1,'#4a5568');
+    ctx.fillStyle=g; roundRect(x,y,w,h,10); ctx.fill();
+    ctx.strokeStyle='rgba(15,20,32,.6)'; ctx.lineWidth=2.5; roundRect(x,y,w,h,10); ctx.stroke();
+    ctx.strokeStyle='rgba(15,20,32,.35)'; ctx.lineWidth=3;
+    for(const k of [0.3,0.7]){ ctx.beginPath(); ctx.moveTo(x,y+h*k); ctx.lineTo(x+w,y+h*k); ctx.stroke(); }
+    txt('H₂O',0,0,'900 15px system-ui','rgba(15,20,32,.5)','center');
+  }else if(b.kind==='house'){
+    ctx.fillStyle='#c9d4e4'; roundRect(x,y,w,h,4); ctx.fill();
+    ctx.strokeStyle='rgba(15,20,32,.5)'; ctx.lineWidth=2.5; roundRect(x,y,w,h,4); ctx.stroke();
+    ctx.fillStyle='#b0472f'; ctx.beginPath();                    // roof
+    ctx.moveTo(x-10,y); ctx.lineTo(0,y-34); ctx.lineTo(x+w+10,y); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#5c7fb0';
+    for(const p of [[-0.26,-0.12],[0.26,-0.12]]) { roundRect(p[0]*w-15,y+h*0.22,30,26,3); ctx.fill(); }
+    ctx.fillStyle='#7a5230'; roundRect(-16,y+h*0.55,32,h*0.45,3); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.9)'; txt('KEEP',0,y-14,'800 12px system-ui','#fff','center');
+  }else{
+    const g=ctx.createLinearGradient(0,y,0,y+h);
+    g.addColorStop(0,'#9c6a4a'); g.addColorStop(1,'#71482f');
+    ctx.fillStyle=g; roundRect(x,y,w,h,3); ctx.fill();
+    ctx.save(); roundRect(x,y,w,h,3); ctx.clip();                // brick courses
+    ctx.strokeStyle='rgba(30,18,10,.30)'; ctx.lineWidth=2;
+    for(let r=1;r*22<h;r++){ ctx.beginPath(); ctx.moveTo(x,y+r*22); ctx.lineTo(x+w,y+r*22); ctx.stroke(); }
+    for(let r=0;r*22<h;r++){ const off=(r%2)*17;
+      for(let c=off;c<w;c+=34){ ctx.beginPath(); ctx.moveTo(x+c,y+r*22); ctx.lineTo(x+c,y+(r+1)*22); ctx.stroke(); } }
+    ctx.restore();
+    ctx.strokeStyle='rgba(15,20,32,.5)'; ctx.lineWidth=2.5; roundRect(x,y,w,h,3); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.10)'; ctx.fillRect(x+2,y+2,w-4,3);
+  }
+  ctx.restore();
+}
+function drawCharges(){
+  if(S.mode!=='place'&&S.mode!=='boom') return;   // markers vanish with the blast
+  for(let k=0;k<S.chargeB.length;k++){
+    const b=S.chargeB[k]; if(!b) continue;
+    const on=S.picked.indexOf(k)>=0;
+    const pulse=(Math.sin(S.time*(on?9:3.4)+k)+1)/2;
+    ctx.save(); ctx.translate(b.x,b.y);
+    ctx.fillStyle=on?`rgba(255,80,40,${0.25+0.3*pulse})`:'rgba(255,176,32,.16)';
+    ctx.beginPath(); ctx.arc(0,0,34+pulse*(on?7:3),0,7); ctx.fill();
+    ctx.fillStyle=on?'#ff5a2a':'#3a4152';
+    ctx.beginPath(); ctx.arc(0,0,21,0,7); ctx.fill();
+    ctx.strokeStyle=on?'#ffd9a0':'rgba(255,176,32,.75)'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(0,0,21,0,7); ctx.stroke();
+    ctx.font='19px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(on?'🧨':'＋',0,1);
+    if(on){ ctx.fillStyle=`rgba(255,240,200,${pulse})`; ctx.beginPath(); ctx.arc(13,-14,4.5,0,7); ctx.fill(); }
+    ctx.restore();
+  }
+}
+function drawButton(){
+  if(S.mode!=='place') return;
+  const on=armed(), k=(Math.sin(S.time*4)+1)/2;
+  ctx.save();
+  ctx.fillStyle=on?'rgba(255,90,42,.35)':'rgba(0,0,0,.3)';
+  roundRect(BTN.x,BTN.y+7,BTN.w,BTN.h,26); ctx.fill();
+  const g=ctx.createLinearGradient(0,BTN.y,0,BTN.y+BTN.h);
+  if(on){ g.addColorStop(0,'#ff8a45'); g.addColorStop(1,'#e03c12'); }
+  else  { g.addColorStop(0,'#39414f'); g.addColorStop(1,'#262c38'); }
+  ctx.fillStyle=g; roundRect(BTN.x,BTN.y,BTN.w,BTN.h,26); ctx.fill();
+  if(on){ ctx.strokeStyle=`rgba(255,214,150,${0.4+0.4*k})`; ctx.lineWidth=4;
+          roundRect(BTN.x-3,BTN.y-3,BTN.w+6,BTN.h+6,29); ctx.stroke(); }
+  txt(on?'DEMOLISH':'PLACE YOUR CHARGES',BTN.x+BTN.w/2,BTN.y+BTN.h/2,
+      on?'900 30px system-ui':'800 20px system-ui', on?'#fff':'#7b8698','center');
+  ctx.restore();
+}
+function drawDust(){
+  for(const p of S.dust){
+    const a=1-p.age/p.life;
+    if(p.kind==='conf'){ ctx.save(); ctx.globalAlpha=a; ctx.fillStyle=p.color;
+      ctx.translate(p.x,p.y); ctx.rotate(p.rot||0); ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r); ctx.restore(); }
+    else { ctx.globalAlpha=a*0.26; ctx.fillStyle='#cbbfae';
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+function drawHand(){
+  if(S.mode!=='place'||S.time-S.lastInput<CONFIG.idleHint) return;
+  const a=nextAction(); if(!a) return;
+  const k=(Math.sin(S.handPh*3.2)+1)/2;
+  let x,y;
+  if(a.pick!==undefined){ const b=S.chargeB[a.pick]; if(!b) return; x=w2sx(b.x); y=w2sy(b.y);
+    ctx.save(); ctx.strokeStyle=`rgba(255,255,255,${0.25+0.35*(1-k)})`; ctx.lineWidth=4;
+    ctx.beginPath(); ctx.arc(x,y,40+k*6,0,7); ctx.stroke(); ctx.restore();
+  } else { x=BTN.x+BTN.w/2; y=BTN.y+BTN.h/2; }
+  ctx.save();
+  ctx.translate(x+24,y+36+k*10);
+  ctx.font='52px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=10;
+  ctx.fillText('👆',0,0);
+  ctx.restore();
+}
+function drawTip(){
+  if(S.si>0||S.tip<=0||S.mode!=='place') return;
+  ctx.save(); ctx.globalAlpha=S.tip*0.9;
+  txt('TAP THE CHARGE POINTS — WHICH TWO IS THE PUZZLE',360,1082,'700 20px system-ui','#8792a5','center');
+  ctx.restore();
+}
+function drawResult(){
+  if(S.mode!=='result'||!S.outcome) return;
+  const y=site().line;
+  ctx.save();
+  ctx.globalAlpha=0.9;
+  ctx.strokeStyle=S.outcome==='clear'?'#42d76c':'#ff6a3d'; ctx.lineWidth=6;
+  ctx.setLineDash([18,14]); ctx.beginPath(); ctx.moveTo(s2wx(24),y); ctx.lineTo(s2wx(SW-24),y); ctx.stroke();
+  ctx.restore();
+}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  drawBG();
+  const sh=S.shake, shx=sh?rnd(-sh,sh)*scale:0, shy=sh?rnd(-sh,sh)*scale:0;
+  ctx.save(); ctx.translate(ox+shx,oy+shy); ctx.scale(scale,scale);
+  ctx.save();                                       // ---- world layer ----
+  ctx.translate(CAM.sx,CAM.sy); ctx.scale(CAM.k,CAM.k); ctx.translate(-CAM.ax,-CAM.ay);
+  drawLine(); drawResult();
+  for(const b of World.bodies) if(b.kind!=='ground') drawBody(b);
+  drawGround();
+  drawCharges();
+  drawDust();
+  ctx.restore();                                    // ---- scene layer ----
+  drawTip();
+  drawButton();
+  drawHand();
+  if(S.flash>0){ ctx.fillStyle=`rgba(255,230,190,${S.flash*0.5})`; ctx.fillRect(-200,-200,SW+400,SH+400); }
+  ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt); draw();
+}
+function start(){ newRun(); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* =========================================================================
+   DEBUG HOOKS
+   ========================================================================= */
+/** the blast itself — shared by the live detonation and the headless runs, so
+    what stress() proves is what the player gets */
+function applyCharges(picks){
+  for(const k of picks){
+    const b=S.chargeB[k]; if(!b) continue;
+    const bx=b.x, by=b.y;
+    puff(bx,by,15);
+    World.remove(b);
+    // everything wakes: a sleeping block whose support just vanished would
+    // otherwise hang in mid-air
+    for(const o of World.bodies) World.wake(o);
+    for(const o of World.bodies){
+      if(o.st) continue;
+      const dx=o.x-bx, dy=o.y-by, d=Math.hypot(dx,dy);
+      if(d>190) continue;
+      const f=CONFIG.blastImp*(1-d/190)/(o.im?1/o.im:1);
+      World.wake(o);
+      o.vx+=dx/(d||1)*f; o.vy+=dy/(d||1)*f-40;
+    }
+  }
+  S.tower=S.tower.filter(b=>World.bodies.indexOf(b)>=0);
+  S.chargeB=S.chargeB.map(b=>World.bodies.indexOf(b)>=0?b:null);
+}
+/** run one charge combination to rest with no rendering and no timers */
+function simulate(si,picks,maxSec=8){
+  buildSite(si,picks.length); S.dust=[];
+  // settle first: the game detonates a second or more after the site is built,
+  // by which time the frame has engaged its contacts and gone to sleep. Blowing
+  // it at t=0 instead measures a different scenario, and the two disagreed —
+  // solve() failed a pair that stress() called a winner.
+  for(let k=0;k<240&&!World.atRest();k++) World.step(CONFIG.H);
+  applyCharges(picks);
+  let t=0;
+  while(t<maxSec){ World.step(CONFIG.H); t+=CONFIG.H; if(t>0.6&&World.atRest()) break; }
+  const top=towerTop();
+  return {picks:picks.slice(), outcome:houseHit()?'house':(top>SITES[si].line?'clear':'tall'),
+          top:+top.toFixed(1), line:SITES[si].line, sec:+t.toFixed(2), standing:S.tower.length};
+}
+window.__game={ S, CONFIG, SITES, World, newRun, build:buildSite, end:showEnd, next:nextAction,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); draw(); },
+  pick:k=>togglePick(k,true), fire:()=>detonate(true), sim:simulate,
+  /** the structures as authored. The one that matters: a hand-built tower has
+      to be AT REST before anything is detonated — a level that sags on frame
+      one is the classic way a physics build ships broken. */
+  audit:()=>SITES.map((L,i)=>{
+    buildSite(i);
+    for(let k=0;k<120;k++) World.step(CONFIG.H);         // 1 s to engage contacts
+    const before=S.tower.map(b=>({x:b.x,y:b.y,a:b.a}));
+    for(let k=0;k<300;k++) World.step(CONFIG.H);         // then 2.5 s untouched
+    let drift=0, spin=0;
+    S.tower.forEach((b,k)=>{ drift=Math.max(drift,Math.hypot(b.x-before[k].x,b.y-before[k].y));
+                             spin=Math.max(spin,Math.abs(b.a-before[k].a)); });
+    const ch=L.charges, bad=[];
+    if(new Set(ch).size!==ch.length) bad.push('duplicate charge body');
+    if(ch.some(k=>k<0||k>=L.blocks.length)) bad.push('charge index out of range');
+    if(L.best.some(k=>k<0||k>=ch.length)) bad.push('best index out of range');
+    if(new Set(L.best).size!==L.best.length) bad.push('best pair repeats a charge');
+    if(L.best3&&!L.best.every(k=>L.best3.indexOf(k)>=0)) bad.push('best3 is not a superset of best');
+    if(L.line<=200||L.line>=GROUND_Y) bad.push('score line outside the scene');
+    if(!S.tower.every(b=>b.y<GROUND_Y+40)) bad.push('a block starts below ground');
+    return { site:L.name, bodies:L.blocks.length, charges:ch.length,
+             atRestDriftPx:+drift.toFixed(2), atRestSpinRad:+spin.toFixed(4),
+             settledAsleep:World.atRest(), problems:bad,
+             towerTop:+towerTop().toFixed(1), line:L.line };
+  }),
+  /** untouched impression: the ad places its own charges and blows them */
+  solve:(maxSec=90,dt=1/30)=>{
+    S.time=0; newRun(); S.lastInput=-999; S.autoOn=true; acc=0;
+    const marks=[]; let si=-1, mode='';
+    for(let i=0;i<maxSec/dt&&S.mode!=='end';i++){
+      update(dt);
+      if(S.si!==si||S.mode!==mode){ si=S.si; mode=S.mode; marks.push(`t=${S.time.toFixed(1)} ${SITES[si].name} ${mode}`); }
+    }
+    return { finished:S.mode==='end', t:+S.time.toFixed(1), cleared:S.cleared,
+             blasts:S.blasts, rescues:S.rescues, marks };
+  },
+  /** EVERY charge pair, run to rest. This is the level design tool: it proves
+      the declared best pair wins, that the puzzle is a real decision (most
+      pairs must fail), and that the 3-charge rescue always resolves. */
+  stress:(si=0)=>{
+    const L=SITES[si], n=L.charges.length, rows=[];
+    for(let i=0;i<n;i++) for(let j=i+1;j<n;j++) rows.push(simulate(si,[i,j]));
+    const wins=rows.filter(r=>r.outcome==='clear');
+    const rescue=simulate(si,(L.best3||L.best).slice());
+    const bestRow=rows.find(r=>r.picks[0]===Math.min(...L.best)&&r.picks[1]===Math.max(...L.best));
+    newRun();
+    return { site:L.name, pairs:rows.length, winners:wins.length,
+             declaredBest:L.best, declaredBestOutcome:bestRow&&bestRow.outcome,
+             rescue3Outcome:rescue.outcome,
+             table:rows.map(r=>`${r.picks} ${r.outcome} top=${r.top}/${r.line} ${r.sec}s`) };
+  },
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Bolt Out — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#171a21; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(26px,6vw); font-weight:900; letter-spacing:3px; color:#ffb648;
+    text-shadow:0 2px 0 #7a4a00, 0 4px 12px rgba(0,0,0,.55); }
+  #lvl { margin-top:2px; font-size:12px; font-weight:700; letter-spacing:3px; color:#8d96a8; }
+  #goal { margin-top:6px; display:inline-flex; align-items:center; gap:7px; padding:5px 14px; border-radius:16px;
+    background:rgba(0,0,0,.32); color:#fff; font-weight:800; font-size:15px; transition:transform .12s; }
+  #goal .nut { width:15px; height:15px; background:#cfd6e4; clip-path:polygon(25% 2%,75% 2%,100% 50%,75% 98%,25% 98%,0 50%); }
+  #goal.pop { transform:scale(1.25); }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- Toast ---------- */
+  #toast { position:absolute; top:34%; left:0; right:0; text-align:center; font-size:min(44px,10vw); font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.55);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#ffb648; } #toast.bad { color:#ff6b5e; } #toast.help { color:#5ad2ff; }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background:radial-gradient(ellipse at 50% 30%, #2f3644 0%, #14171d 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:96px; height:96px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:linear-gradient(160deg,#ffd88a,#f08c20); box-shadow:0 10px 30px rgba(0,0,0,.55), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:min(30px,7vw); font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.45); }
+  #end p  { color:#98a2b3; font-size:16px; margin-top:-8px; text-align:center; padding:0 34px; }
+  #cta { padding:18px 64px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#7d8797; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="hdr"><div id="title">BOLT OUT</div><div id="lvl">LEVEL 1 / 3</div>
+  <div id="goal"><span class="nut"></span><span id="goalTxt">0/6</span></div></div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="end">
+  <div class="icon">🔩</div>
+  <h1>Hatch cracked!</h1>
+  <p id="endSub">You unscrewed 27 bolts.</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Watch again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   BOLT OUT — self-contained playable ad (screw / unscrew puzzle)
+   Scene designed in 720x1280 virtual units, letterbox-scaled to viewport.
+   All timing runs on sim time (S.time) so the whole game is headless-steppable
+   through window.__game.tick().
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL: 'https://apps.apple.com/app/id000000000',  // replace per campaign
+  slotCap: 3,            // bolts a slot holds before it ships out
+  baseSlots: 3,          // slots at level start
+  maxSlots: 4,           // after the free bonus slot
+  unscrewTime: 0.22,     // s — bolt spins out of its hole
+  flyTime: 0.40,         // s — bolt arcs into its slot
+  fallDelay: 0.16,       // s — pause between last bolt and the plate letting go
+  plateGravity: 2500,
+  stuckBonus: 3.0,       // s jammed -> free extra slot
+  stuckClear: 5.0,       // s jammed with all slots -> free ship-out
+  idleHint: 3.0,         // s idle -> tutorial hand
+  winPause: 1.6,         // s on the cleared hatch before the next level
+  autoEnd: 85,           // s -> force end card
+};
+
+/* ---------- tiny helpers ---------- */
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const rnd   = (a,b)=>a+Math.random()*(b-a);
+const dist2 = (x1,y1,x2,y2)=>{const dx=x2-x1,dy=y2-y1;return dx*dx+dy*dy;};
+const $ = id=>document.getElementById(id);
+const vibe = p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+
+/* =========================================================================
+   AUDIO — synthesized, no assets
+   ========================================================================= */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  drill(){ this.tone(520,300,0.16,'square',0.10); this.tone(180,120,0.16,'sawtooth',0.05); },
+  drop(n){ const f=740*Math.pow(1.0595,Math.min(n,10)); this.tone(f,f,0.07,'sine',0.13); },
+  ship(){ [660,880,1175].forEach((f,i)=>this.tone(f,f,0.13,'triangle',0.16,i*0.06)); },
+  clang(){ this.tone(300,110,0.28,'sawtooth',0.13); this.tone(900,420,0.10,'square',0.05); },
+  deny(){ this.tone(150,110,0.20,'square',0.16); this.tone(110,80,0.24,'sawtooth',0.10,0.04); },
+  bonus(){ [523,659,784,1047].forEach((f,i)=>this.tone(f,f,0.14,'sine',0.14,i*0.05)); },
+  win(){ [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.20,'triangle',0.18,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* =========================================================================
+   CTA / MRAID
+   ========================================================================= */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{ $('end').classList.remove('show'); S.totalDone=0; S.jams=0; S.time=0; loadLevel(0); });
+
+/* =========================================================================
+   RENDER SETUP — 720x1280 scene, letterboxed
+   ========================================================================= */
+const cv=$('game'), ctx=cv.getContext('2d');
+const SW=720, SH=1280;
+let vw=0, vh=0, dpr=1, scale=1, ox=0, oy=0;
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';   // fixed inset:0 alone won't size a canvas
+  scale=Math.min(vw/SW,vh/SH); ox=(vw-SW*scale)/2; oy=(vh-SH*scale)/2;
+}
+addEventListener('resize',resize); resize();
+const toScene = (px,py)=>[(px-ox)/scale, (py-oy)/scale];
+
+/* =========================================================================
+   BOLT COLORS — each colour also gets its own head glyph (colour-blind safe)
+   ========================================================================= */
+const COLORS = {
+  r:{hi:'#ffb2a8', mid:'#f04a3c', lo:'#8e1a10', glyph:'hex'},
+  b:{hi:'#a8dcff', mid:'#2f9bff', lo:'#0b4d94', glyph:'square'},
+  y:{hi:'#ffe9a8', mid:'#ffc21f', lo:'#9a6a00', glyph:'cross'},
+  g:{hi:'#a8f0c8', mid:'#2fc46e', lo:'#0c6b3a', glyph:'tri'},
+};
+const BOLT_R = 21;          // bolt head radius, scene units
+const TAP_R  = 40;          // forgiving tap radius
+
+/* =========================================================================
+   LEVELS
+   plates: drawn bottom-up (array order = z order, last = on top)
+     rect:[x0,y0,x1,y1]  or  pts:[[x,y],...]  (concave allowed)
+   bolts:  {p:<plate index>, x, y, c:<colour key>}
+     a bolt is only tappable while no *higher* plate still covers it
+   Every colour appears exactly 3x (= CONFIG.slotCap) so slots resolve cleanly.
+   ========================================================================= */
+const LEVELS = [
+  { // L1 — teach the loop: tap a bolt, it flies into its colour slot.
+    // One blue bolt hides under the red plate -> first taste of layering.
+    plates:[ {rect:[120,600,600,730]}, {rect:[300,380,430,790]} ],
+    bolts:[
+      {p:0,x:180,y:665,c:'b'}, {p:0,x:365,y:665,c:'b'}, {p:0,x:545,y:665,c:'b'},
+      {p:1,x:365,y:430,c:'r'}, {p:1,x:365,y:530,c:'r'}, {p:1,x:365,y:760,c:'r'},
+    ],
+  },
+  { // L2 — order matters: the centre plate hides one bolt on each plate below.
+    plates:[
+      {rect:[110,650,610,770]},
+      {pts:[[150,500],[570,500],[570,620],[270,620],[270,720],[150,720]]},
+      {rect:[300,380,430,830]},
+    ],
+    bolts:[
+      {p:0,x:185,y:690,c:'b'}, {p:0,x:365,y:712,c:'b'}, {p:0,x:555,y:712,c:'b'},
+      {p:1,x:205,y:560,c:'y'}, {p:1,x:365,y:560,c:'y'}, {p:1,x:520,y:560,c:'y'},
+      {p:2,x:365,y:425,c:'r'}, {p:2,x:365,y:645,c:'r'}, {p:2,x:365,y:800,c:'r'},
+    ],
+  },
+  { // L3 — four colours, three slots: the player can genuinely jam themselves,
+    // which is what the free bonus slot exists for.
+    plates:[
+      {rect:[100,690,620,810]},
+      {rect:[130,400,250,730]},
+      {rect:[470,400,590,730]},
+      {rect:[160,375,560,495]},
+      {rect:[300,420,420,865]},
+    ],
+    bolts:[
+      {p:0,x:155,y:750,c:'g'}, {p:0,x:360,y:750,c:'r'}, {p:0,x:565,y:750,c:'b'},
+      {p:1,x:190,y:440,c:'r'}, {p:1,x:190,y:620,c:'y'},
+      {p:2,x:530,y:440,c:'b'}, {p:2,x:530,y:620,c:'g'},
+      {p:3,x:215,y:435,c:'y'}, {p:3,x:360,y:452,c:'g'}, {p:3,x:505,y:435,c:'y'},
+      {p:4,x:360,y:470,c:'r'}, {p:4,x:360,y:830,c:'b'},
+    ],
+  },
+];
+
+/* =========================================================================
+   GEOMETRY
+   ========================================================================= */
+const rectPts = r=>[[r[0],r[1]],[r[2],r[1]],[r[2],r[3]],[r[0],r[3]]];
+function centroid(pts){ let x=0,y=0; for(const p of pts){x+=p[0];y+=p[1];} return [x/pts.length,y/pts.length]; }
+function bbox(pts){ let a=1e9,b=1e9,c=-1e9,d=-1e9;
+  for(const p of pts){ a=Math.min(a,p[0]); b=Math.min(b,p[1]); c=Math.max(c,p[0]); d=Math.max(d,p[1]); }
+  return [a,b,c,d]; }
+function pointInPoly(x,y,pts){                  // ray casting, works for concave
+  let inside=false;
+  for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+    const xi=pts[i][0], yi=pts[i][1], xj=pts[j][0], yj=pts[j][1];
+    if((yi>y)!==(yj>y) && x < (xj-xi)*(y-yi)/(yj-yi)+xi) inside=!inside;
+  }
+  return inside;
+}
+function pathPoly(g,pts,r){                     // rounded polygon path
+  const n=pts.length;
+  g.beginPath();
+  for(let i=0;i<n;i++){
+    const a=pts[i], b=pts[(i+1)%n], c=pts[(i+2)%n];
+    if(i===0){ g.moveTo((a[0]+b[0])/2,(a[1]+b[1])/2); }
+    g.arcTo(b[0],b[1],(b[0]+c[0])/2,(b[1]+c[1])/2,r);
+  }
+  g.closePath();
+}
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const S = {
+  mode:'play',        // play | clear | end
+  time:0, li:0,
+  plates:[], bolts:[], slots:[], parts:[], timers:[],
+  total:0, done:0, totalDone:0, jams:0,
+  lastInput:0, stuck:0, bonusUsed:false,
+  shake:0, slotShake:0, open:0, chestPulse:0,
+  hand:{ph:0},
+};
+function later(sec,fn){ S.timers.push({t:S.time+sec,fn}); }
+const newSlot = (appear=0)=>({color:null,count:0,incoming:0,ship:0,appear,pulse:0});
+
+function loadLevel(i){
+  const L=LEVELS[i]; S.li=i;
+  S.plates = L.plates.map((d,z)=>{
+    const pts = d.rect ? rectPts(d.rect) : d.pts, c = centroid(pts);
+    return {pts, z, cx:c[0], cy:c[1], bb:bbox(pts), state:'held', remaining:0,
+            fx:0, fy:0, vx:0, vy:0, ang:0, va:0, delay:0};
+  });
+  S.bolts = L.bolts.map((b,id)=>{
+    const plate=S.plates[b.p]; plate.remaining++;
+    return {id, x:b.x, y:b.y, c:b.c, plate, state:'in', t:0, spin:rnd(-0.3,0.3), slot:-1, sock:0, jig:0};
+  });
+  S.slots=[]; for(let k=0;k<CONFIG.baseSlots;k++) S.slots.push(newSlot());
+  S.parts=[]; S.timers=[];
+  S.total=S.bolts.length; S.done=0; S.mode='play';
+  S.lastInput=S.time; S.stuck=0; S.bonusUsed=false; S.open=0; S.shake=0; S.slotShake=0;
+  goalUpd(false);
+  $('end').classList.remove('show');
+  $('lvl').textContent=`LEVEL ${i+1} / ${LEVELS.length}`;
+}
+
+/* =========================================================================
+   SLOTS — layout, capacity, ship-out
+   ========================================================================= */
+function slotRects(){
+  const n=S.slots.length, w=n>3?142:170, gap=16, h=104, y=1030;
+  const x0=(SW-(n*w+(n-1)*gap))/2;
+  return S.slots.map((s,i)=>({x:x0+i*(w+gap), y, w, h}));
+}
+function socketPos(i,j){
+  const r=slotRects()[i];
+  return [r.x+r.w/2+(j-1)*r.w*0.29, r.y+r.h*0.58];
+}
+/** index of the slot a bolt of this colour may go to, or -1 when jammed */
+function findSlot(c){
+  for(let i=0;i<S.slots.length;i++){ const s=S.slots[i];
+    if(s.ship>0) continue;
+    if(s.color===c && s.count+s.incoming<CONFIG.slotCap) return i; }
+  for(let i=0;i<S.slots.length;i++){ const s=S.slots[i];
+    if(s.ship>0) continue;
+    if(s.color===null && s.incoming===0) return i; }
+  return -1;
+}
+function shipSlot(i,free){
+  const s=S.slots[i]; if(s.ship>0) return;
+  const r=slotRects()[i];
+  s.ship=0.55; Sfx.ship(); vibe(20);
+  burst(r.x+r.w/2, r.y+r.h/2, COLORS[s.color]?COLORS[s.color].mid:'#cfd6e4', free?10:16);
+  if(free) toast('SLOT CLEARED','help');
+}
+function addBonusSlot(){
+  S.bonusUsed=true; S.slots.push(newSlot(1));
+  Sfx.bonus(); vibe([15,30,15]); toast('+1 FREE SLOT','help');
+  const r=slotRects()[S.slots.length-1];
+  burst(r.x+r.w/2, r.y+r.h/2, '#5ad2ff', 18);
+}
+
+/* =========================================================================
+   BOLTS — reachability, tapping, flight
+   ========================================================================= */
+function covered(b){
+  for(const p of S.plates){
+    if(p.z<=b.plate.z) continue;
+    if(p.state!=='held' && p.state!=='wait') continue;
+    if(b.x<p.bb[0]||b.x>p.bb[2]||b.y<p.bb[1]||b.y>p.bb[3]) continue;
+    if(pointInPoly(b.x,b.y,p.pts)) return true;
+  }
+  return false;
+}
+/** topmost reachable bolt under the finger; nearest wins on the same plate */
+function boltAt(sx,sy){
+  let best=null, bestD=0;
+  for(const b of S.bolts){
+    if(b.state!=='in') continue;
+    const d=dist2(sx,sy,b.x,b.y);
+    if(d>TAP_R*TAP_R || covered(b)) continue;
+    if(!best || b.plate.z>best.plate.z || (b.plate.z===best.plate.z && d<bestD)){ best=b; bestD=d; }
+  }
+  return best;
+}
+function tapBolt(b){
+  if(!b || b.state!=='in' || S.mode!=='play') return false;
+  const si=findSlot(b.c);
+  if(si<0){                                   // jammed — never a fail, just a nudge
+    S.slotShake=1; b.jig=1; S.jams++; Sfx.deny(); vibe(35);
+    for(const s of S.slots) s.pulse=1;
+    return false;
+  }
+  const s=S.slots[si];
+  if(s.color===null) s.color=b.c;
+  b.sock=s.count+s.incoming; s.incoming++;
+  b.slot=si; b.state='spin'; b.t=0;
+  b.plate.remaining--;
+  S.stuck=0; S.lastInput=S.time;
+  Sfx.drill(); vibe(10);
+  sparks(b.x,b.y);
+  return true;
+}
+function landBolt(b){
+  const s=S.slots[b.slot];
+  b.state='gone'; s.incoming--; s.count++; s.pulse=1;
+  S.done++; S.totalDone++; goalUpd(true);
+  Sfx.drop(s.count);
+  if(s.count>=CONFIG.slotCap) shipSlot(b.slot,false);
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+function pointerDown(e){
+  Sfx.ensure(); S.lastInput=S.time; S.hand.ph=0;
+  if(S.mode!=='play') return;
+  const [sx,sy]=toScene(e.clientX,e.clientY);
+  tapBolt(boltAt(sx,sy));
+}
+cv.addEventListener('pointerdown',pointerDown);
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would kill the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* =========================================================================
+   HINT — next bolt worth tapping
+   ========================================================================= */
+function hintBolt(){
+  let best=null, bestScore=-1;
+  for(const b of S.bolts){
+    if(b.state!=='in'||covered(b)) continue;
+    const si=findSlot(b.c); if(si<0) continue;
+    const s=S.slots[si];
+    // prefer finishing an open stack, then opening a fresh slot
+    const score=(s.color===b.c? 10+s.count : 1);
+    if(score>bestScore){ bestScore=score; best=b; }
+  }
+  return best;
+}
+
+/* =========================================================================
+   PARTICLES
+   ========================================================================= */
+function burst(x,y,color,n){ for(let i=0;i<n;i++) S.parts.push({x,y,vx:rnd(-190,190),vy:rnd(-300,-70),
+  life:rnd(.4,.75),age:0,color,r:rnd(2,4.5),grav:700,kind:'dot'}); }
+function sparks(x,y){ for(let i=0;i<7;i++) S.parts.push({x,y,vx:rnd(-150,150),vy:rnd(-180,-30),
+  life:rnd(.2,.4),age:0,color:'#ffe9a8',r:rnd(1.4,2.6),grav:900,kind:'dot'}); }
+function confetti(x,y){ const cols=['#ffc21f','#42d76c','#ff6b9d','#5ad2ff','#ff9f43'];
+  for(let i=0;i<90;i++) S.parts.push({x:x+rnd(-50,50),y,vx:rnd(-380,380),vy:rnd(-760,-260),
+    life:rnd(.9,1.7),age:0,color:cols[i%cols.length],r:rnd(3,6),grav:950,rot:rnd(0,7),vr:rnd(-9,9),kind:'conf'}); }
+function updateParts(dt){
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt; if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; if(p.rot!==undefined) p.rot+=p.vr*dt;
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+function goalUpd(pop){
+  $('goalTxt').textContent=S.done+'/'+S.total;
+  if(pop){ const g=$('goal'); g.classList.remove('pop'); void g.offsetWidth; g.classList.add('pop'); }
+}
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  later(1.2,()=>t.classList.remove('show'));
+}
+function levelCleared(){
+  S.mode='clear'; Sfx.win(); vibe([25,40,25]); S.chestPulse=1;
+  confetti(360,760);
+  toast(['NICE!','SMOOTH!','HATCH CRACKED!'][S.li]||'CLEAR!','good');
+  later(CONFIG.winPause,()=>{
+    if(S.li+1<LEVELS.length) loadLevel(S.li+1);
+    else showEnd();
+  });
+}
+function showEnd(){
+  S.mode='end';
+  $('endSub').textContent = S.jams                       // end card reflects how it actually went
+    ? `${S.totalDone} bolts out of ${LEVELS.length} hatches — and you talked your way out of ${S.jams} tight spot${S.jams>1?'s':''}.`
+    : `You unscrewed ${S.totalDone} bolts without a single jam-up.`;
+  $('end').classList.add('show');
+}
+
+/* =========================================================================
+   UPDATE — everything on sim time
+   ========================================================================= */
+function update(dt){
+  S.time+=dt;
+
+  for(let i=S.timers.length-1;i>=0;i--){                 // sim-time scheduler
+    if(S.time>=S.timers[i].t){ const fn=S.timers[i].fn; S.timers.splice(i,1); fn(); }
+  }
+  if(S.mode==='end') { updateParts(dt); return; }
+
+  // ---- bolts ----
+  for(const b of S.bolts){
+    if(b.jig>0) b.jig=Math.max(0,b.jig-dt*4);
+    if(b.state==='spin'){
+      b.t+=dt/CONFIG.unscrewTime; b.spin+=dt*26;
+      if(b.t>=1){ b.state='fly'; b.t=0; }
+    } else if(b.state==='fly'){
+      b.t+=dt/CONFIG.flyTime; b.spin+=dt*14;
+      if(b.t>=1) landBolt(b);
+    }
+  }
+  // ---- plates ----
+  for(const p of S.plates){
+    if(p.state==='held' && p.remaining<=0){ p.state='wait'; p.delay=CONFIG.fallDelay; }
+    else if(p.state==='wait'){
+      p.delay-=dt;
+      if(p.delay<=0){ p.state='falling'; p.vy=-140; p.vx=rnd(-110,110); p.va=rnd(-2.4,2.4);
+        Sfx.clang(); S.shake=Math.max(S.shake,7); vibe(22); sparks(p.cx,p.cy); }
+    } else if(p.state==='falling'){
+      p.vy+=CONFIG.plateGravity*dt; p.fx+=p.vx*dt; p.fy+=p.vy*dt; p.ang+=p.va*dt;
+      if(p.cy+p.fy>SH+800) p.state='gone';
+    }
+  }
+  // ---- slots ----
+  for(const s of S.slots){
+    if(s.pulse>0) s.pulse=Math.max(0,s.pulse-dt*4);
+    if(s.appear>0) s.appear=Math.max(0,s.appear-dt*2.2);
+    if(s.ship>0){ s.ship-=dt; if(s.ship<=0){ s.ship=0; s.color=null; s.count=0; } }
+  }
+  if(S.slotShake>0) S.slotShake=Math.max(0,S.slotShake-dt*3.5);
+  if(S.shake>0) S.shake=Math.max(0,S.shake-dt*26);
+  if(S.chestPulse>0) S.chestPulse=Math.max(0,S.chestPulse-dt*1.2);
+  updateParts(dt);
+  if(S.mode==='clear') S.open=Math.min(1,S.open+dt*2.4);   // sim time, not rAF: stays testable
+
+  if(S.mode!=='play') return;
+
+  // ---- win ----
+  if(S.plates.every(p=>p.state==='falling'||p.state==='gone')){ levelCleared(); return; }
+
+  // ---- jam safety net: the ad must always be finishable ----
+  const busy=S.bolts.some(b=>b.state==='spin'||b.state==='fly');
+  const playable=S.bolts.some(b=>b.state==='in'&&!covered(b)&&findSlot(b.c)>=0);
+  if(!playable && !busy){
+    S.stuck+=dt;
+    if(!S.bonusUsed && S.slots.length<CONFIG.maxSlots && S.stuck>CONFIG.stuckBonus){ S.stuck=0; addBonusSlot(); }
+    else if(S.stuck>CONFIG.stuckClear){
+      S.stuck=0;
+      let bi=0; for(let i=1;i<S.slots.length;i++) if(S.slots[i].count>S.slots[bi].count) bi=i;
+      shipSlot(bi,true);
+    }
+  } else S.stuck=0;
+
+  if(S.time>CONFIG.autoEnd) showEnd();
+}
+
+/* =========================================================================
+   DRAWING
+   ========================================================================= */
+const PANEL=[60,330,660,915];
+
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,vh);
+  g.addColorStop(0,'#2b303c'); g.addColorStop(1,'#12151b');
+  ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+}
+function drawPanel(){
+  const [x0,y0,x1,y1]=PANEL, w=x1-x0, h=y1-y0;
+  ctx.fillStyle='rgba(0,0,0,.30)'; roundRect(x0-6,y0-6,w+12,h+12,26); ctx.fill();
+  const g=ctx.createLinearGradient(0,y0,0,y1);
+  g.addColorStop(0,'#232833'); g.addColorStop(1,'#191d26');
+  ctx.fillStyle=g; roundRect(x0,y0,w,h,22); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=2; roundRect(x0,y0,w,h,22); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.035)'; ctx.lineWidth=1;                 // faint grid
+  for(let x=x0+40;x<x1;x+=40){ ctx.beginPath(); ctx.moveTo(x,y0+8); ctx.lineTo(x,y1-8); ctx.stroke(); }
+  for(let y=y0+40;y<y1;y+=40){ ctx.beginPath(); ctx.moveTo(x0+8,y); ctx.lineTo(x1-8,y); ctx.stroke(); }
+  for(const [rx,ry] of [[x0+22,y0+22],[x1-22,y0+22],[x0+22,y1-22],[x1-22,y1-22]]){  // corner rivets
+    ctx.fillStyle='#39404f'; ctx.beginPath(); ctx.arc(rx,ry,8,0,7); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(rx-2,ry-2.5,3,0,7); ctx.fill();
+  }
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function drawChest(){
+  const cx=360, cy=740, w=216, hb=100, open=S.open, sc=1+S.chestPulse*0.08;
+  ctx.save(); ctx.translate(cx,cy); ctx.scale(sc,sc);
+  const gl=ctx.createRadialGradient(0,0,10,0,0,200);                    // treasure glow
+  gl.addColorStop(0,`rgba(255,194,31,${0.24+0.26*open})`); gl.addColorStop(1,'transparent');
+  ctx.fillStyle=gl; ctx.fillRect(-200,-200,400,400);
+  ctx.fillStyle='#ffc21f';                                              // coins, rise with the lid
+  for(let i=0;i<7;i++){ ctx.beginPath(); ctx.arc(-78+i*26, -14-open*(18+Math.sin(i*1.1)*10), 14, 0, 7); ctx.fill(); }
+  const bg=ctx.createLinearGradient(0,-8,0,hb);                         // body
+  bg.addColorStop(0,'#8a5a26'); bg.addColorStop(1,'#563314');
+  ctx.fillStyle=bg; roundRect(-w/2,-8,w,hb,10); ctx.fill();
+  ctx.strokeStyle='#311d0d'; ctx.lineWidth=4; roundRect(-w/2,-8,w,hb,10); ctx.stroke();
+  ctx.fillStyle='#c9922f'; for(const bx of [-w/2+26,w/2-40]) ctx.fillRect(bx,-8,14,hb);
+  ctx.fillStyle='#e0b04a'; roundRect(-19,24,38,32,6); ctx.fill();       // lock plate
+  ctx.fillStyle='#311d0d'; ctx.fillRect(-4,34,8,14);
+  ctx.save(); ctx.translate(-w/2,-8); ctx.rotate(-open*0.98);           // lid
+  const lg=ctx.createLinearGradient(0,-46,0,4);
+  lg.addColorStop(0,'#a06a2c'); lg.addColorStop(1,'#6d431c');
+  ctx.fillStyle=lg; roundRect(0,-46,w,50,10); ctx.fill();
+  ctx.strokeStyle='#311d0d'; ctx.lineWidth=4; roundRect(0,-46,w,50,10); ctx.stroke();
+  ctx.fillStyle='#c9922f'; for(const bx of [26,w-40]) ctx.fillRect(bx,-46,14,50);
+  ctx.restore();
+  ctx.restore();
+}
+/** brushed-steel plate with bevel + drop shadow */
+function drawPlate(p){
+  ctx.save();
+  if(p.state==='falling'){
+    ctx.translate(p.cx+p.fx,p.cy+p.fy); ctx.rotate(p.ang); ctx.translate(-p.cx,-p.cy);
+    ctx.globalAlpha=clamp(1-(p.cy+p.fy-PANEL[3])/260,0,1);   // debris fades out below the hatch
+  }
+  const [bx0,by0,,by1]=p.bb;
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=16; ctx.shadowOffsetY=8;
+  ctx.fillStyle='#7f8797'; pathPoly(ctx,p.pts,12); ctx.fill(); ctx.restore();
+  const g=ctx.createLinearGradient(0,by0,0,by1);
+  const dark=p.z%2===0;                                   // alternate tones so layers read apart
+  g.addColorStop(0,   dark?'#8e97a8':'#adb6c7');
+  g.addColorStop(0.45,dark?'#6e7686':'#8b93a3');
+  g.addColorStop(1,   dark?'#525965':'#6b7280');
+  ctx.fillStyle=g; pathPoly(ctx,p.pts,12); ctx.fill();
+  ctx.save(); pathPoly(ctx,p.pts,12); ctx.clip();                       // brushed streaks
+  ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.lineWidth=2;
+  for(let i=-2;i<14;i++){ const x=bx0+i*46; ctx.beginPath(); ctx.moveTo(x,by0-40); ctx.lineTo(x+70,by1+40); ctx.stroke(); }
+  ctx.restore();
+  ctx.strokeStyle='rgba(255,255,255,.30)'; ctx.lineWidth=3; pathPoly(ctx,p.pts,12); ctx.stroke();
+  ctx.strokeStyle='rgba(0,0,0,.35)';       ctx.lineWidth=1.5;
+  pathPoly(ctx,p.pts.map(q=>[q[0],q[1]+2]),12); ctx.stroke();
+  ctx.restore();
+}
+function boltGlyph(kind,r){
+  ctx.strokeStyle='rgba(18,20,26,.55)'; ctx.lineWidth=r*0.30; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath();
+  if(kind==='hex'){ for(let i=0;i<6;i++){ const a=i*Math.PI/3, x=Math.cos(a)*r*0.52, y=Math.sin(a)*r*0.52;
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y); } ctx.closePath(); }
+  else if(kind==='square'){ const s=r*0.44; ctx.rect(-s,-s,s*2,s*2); }
+  else if(kind==='cross'){ const s=r*0.55; ctx.moveTo(-s,0); ctx.lineTo(s,0); ctx.moveTo(0,-s); ctx.lineTo(0,s); }
+  else { const s=r*0.58; ctx.moveTo(0,-s); ctx.lineTo(s*0.87,s*0.5); ctx.lineTo(-s*0.87,s*0.5); ctx.closePath(); }
+  ctx.stroke();
+}
+function drawBolt(x,y,c,spin,sc){
+  const col=COLORS[c], r=BOLT_R*sc;
+  ctx.save(); ctx.translate(x,y); ctx.rotate(spin);
+  ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(0,3,r*1.02,0,7); ctx.fill();   // washer shadow
+  ctx.fillStyle='#4a5160'; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();                // washer
+  const g=ctx.createRadialGradient(-r*0.35,-r*0.4,r*0.1,0,0,r*0.86);
+  g.addColorStop(0,col.hi); g.addColorStop(0.55,col.mid); g.addColorStop(1,col.lo);
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,r*0.82,0,7); ctx.fill();                   // head
+  boltGlyph(col.glyph,r);
+  ctx.fillStyle='rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(-r*0.34,-r*0.4,r*0.16,0,7); ctx.fill();
+  ctx.restore();
+}
+function drawFlyingBolts(){
+  for(const b of S.bolts){
+    if(b.state==='spin'){ drawBolt(b.x,b.y-b.t*10,b.c,b.spin,1+b.t*0.12); }
+    else if(b.state==='fly'){
+      const [tx,ty]=socketPos(b.slot,b.sock), t=b.t;
+      const mx=(b.x+tx)/2, my=Math.min(b.y,ty)-190;                    // arc control point
+      const u=1-t, x=u*u*b.x+2*u*t*mx+t*t*tx, y=u*u*(b.y-10)+2*u*t*my+t*t*ty;
+      drawBolt(x,y,b.c,b.spin,1.12-0.22*t);
+    }
+  }
+}
+function drawSlots(){
+  const rects=slotRects(), sh=S.slotShake>0?Math.sin(S.time*60)*7*S.slotShake:0;
+  for(let i=0;i<S.slots.length;i++){
+    const s=S.slots[i], r=rects[i];
+    ctx.save();
+    ctx.translate(r.x+r.w/2+sh, r.y+r.h/2 + (s.ship>0?(0.55-s.ship)*160:0) + s.appear*90);
+    ctx.globalAlpha = s.ship>0 ? Math.max(0,s.ship/0.55) : (1-s.appear*0.6);
+    const sc=1+s.pulse*0.06; ctx.scale(sc,sc);
+    ctx.translate(-r.w/2,-r.h/2);
+    const col=s.color?COLORS[s.color]:null;
+    ctx.fillStyle='rgba(0,0,0,.35)'; roundRect(2,6,r.w,r.h,18); ctx.fill();
+    const g=ctx.createLinearGradient(0,0,0,r.h);
+    g.addColorStop(0, col?col.mid:'#39404f'); g.addColorStop(1, col?col.lo:'#252a35');
+    ctx.fillStyle=g; roundRect(0,0,r.w,r.h,18); ctx.fill();
+    ctx.strokeStyle= S.slotShake>0&&!s.color?'rgba(255,107,94,.9)':'rgba(255,255,255,.16)';
+    ctx.lineWidth=3; roundRect(0,0,r.w,r.h,18); ctx.stroke();
+    for(let j=0;j<CONFIG.slotCap;j++){                                  // sockets
+      const x=r.w/2+(j-1)*r.w*0.29, y=r.h*0.58;
+      ctx.fillStyle='rgba(0,0,0,.34)'; ctx.beginPath(); ctx.arc(x,y,BOLT_R*0.95,0,7); ctx.fill();
+      if(j<s.count) drawBolt(x,y,s.color,0,0.86);
+    }
+    ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='700 13px system-ui'; ctx.textAlign='center';
+    ctx.fillText(s.color?`${s.count}/${CONFIG.slotCap}`:'ANY', r.w/2, 22);
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
+}
+function drawParts(){
+  for(const p of S.parts){
+    const a=1-p.age/p.life; ctx.globalAlpha=a; ctx.fillStyle=p.color;
+    if(p.kind==='conf'){ ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r); ctx.restore(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+function drawHand(){
+  if(S.mode!=='play' || S.time-S.lastInput<CONFIG.idleHint) { S.hand.ph=0; return; }
+  const b=hintBolt(); if(!b) return;
+  S.hand.ph+=1/60;
+  const k=(Math.sin(S.hand.ph*5)+1)/2;                                   // tap mimic
+  ctx.save();
+  ctx.globalAlpha=0.35+0.35*(1-k);
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(b.x,b.y,BOLT_R+8+k*12,0,7); ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.translate(b.x+20, b.y+38+k*10);
+  ctx.font='54px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=10;
+  ctx.fillText('👆',0,0);
+  ctx.restore();
+}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);              // draw in CSS px, sharp on retina
+  drawBG();
+  const shx=S.shake?rnd(-S.shake,S.shake)*scale:0, shy=S.shake?rnd(-S.shake,S.shake)*scale:0;
+  ctx.save(); ctx.translate(ox+shx,oy+shy); ctx.scale(scale,scale);
+  drawPanel();
+  drawChest();
+  for(const p of S.plates){                       // plate, then its own bolts, bottom-up
+    if(p.state==='gone'||p.state==='falling') continue;
+    drawPlate(p);
+    for(const b of S.bolts) if(b.plate===p && b.state==='in'){
+      const j=b.jig>0?Math.sin(S.time*70)*5*b.jig:0;
+      drawBolt(b.x+j,b.y,b.c,b.spin,1);
+    }
+  }
+  for(const p of S.plates) if(p.state==='falling') drawPlate(p);
+  drawFlyingBolts();
+  drawSlots();
+  drawParts();
+  drawHand();
+  ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt);
+  draw();
+}
+
+/* MRAID-aware start */
+function start(){ loadLevel(0); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* debug hooks — headless stepping, used for automated flow tests */
+window.__game={ S, CONFIG, LEVELS, load:loadLevel, hint:hintBolt, covered, findSlot,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); draw(); },
+  tap:i=>tapBolt(S.bolts.find(b=>b.id===i)),
+  tapAt:(x,y)=>tapBolt(boltAt(x,y)),
+  auto:()=>tapBolt(hintBolt()),                 // one optimal-ish move
+  end:showEnd };
+</script>
+</body>
+</html>

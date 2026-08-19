@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Unread — Don’t Go Home (Playable Ad)</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#07080f; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #stage { position:fixed; inset:0;
+    background:radial-gradient(ellipse 700px 500px at 50% -80px, rgba(124,92,255,.14), transparent 70%), #07080f; }
+  #app { position:relative; height:100%; max-width:440px; margin:0 auto;
+    display:flex; flex-direction:column; background:#0b0c16; }
+  @media (min-width:520px){ #app { border-left:1px solid rgba(255,255,255,.07); border-right:1px solid rgba(255,255,255,.07); } }
+
+  /* ---------- header ---------- */
+  #hdr { display:flex; align-items:center; gap:10px; padding:calc(10px + env(safe-area-inset-top)) 12px 10px;
+    background:rgba(18,20,34,.92); border-bottom:1px solid rgba(255,255,255,.07); z-index:5; }
+  #avatar { width:40px; height:40px; border-radius:50%; flex-shrink:0;
+    background:linear-gradient(135deg,#7c5cff,#3a3f8f); color:#fff; font-weight:900; font-size:19px;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+  #who { flex:1; min-width:0; }
+  #name { color:#fff; font-weight:800; font-size:16px; letter-spacing:.3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #status { color:#42d76c; font-size:12px; margin-top:1px; }
+  #status.off { color:#6b7291; }
+  .btn { cursor:pointer; border:none; font-weight:800; }
+  #mute { width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,.10); color:#fff; font-size:15px; flex-shrink:0; }
+  #get { padding:8px 16px; border-radius:20px; background:linear-gradient(180deg,#7c5cff,#5636d6); color:#fff;
+    font-size:14px; letter-spacing:1px; flex-shrink:0;
+    box-shadow:0 3px 0 #3a2492, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- meta bar (choices matter + progress dots) ---------- */
+  #meta { display:flex; align-items:center; justify-content:space-between; padding:6px 14px;
+    background:rgba(18,20,34,.6); border-bottom:1px solid rgba(255,255,255,.05); z-index:5; }
+  #meta .cm { color:#a78bfa; font-size:10.5px; font-weight:900; letter-spacing:2px; }
+  #dots { display:flex; gap:6px; }
+  #dots i { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.12); transition:all .3s; }
+  #dots i.on { background:linear-gradient(135deg,#a78bfa,#7c5cff); box-shadow:0 0 8px rgba(124,92,255,.8); }
+
+  /* ---------- chat ---------- */
+  #chat { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;
+    display:flex; flex-direction:column; gap:7px; padding:14px 12px; }
+  .b { max-width:80%; padding:9px 13px; border-radius:18px; font-size:15px; line-height:1.38; color:#e8eaf6;
+    animation:bpop .3s cubic-bezier(.34,1.56,.64,1); word-wrap:break-word; }
+  @keyframes bpop { from { opacity:0; transform:translateY(10px) scale(.92); } }
+  .them { align-self:flex-start; background:#1d2133; border-bottom-left-radius:5px; }
+  .me { align-self:flex-end; background:linear-gradient(135deg,#7c5cff,#5a7bff); border-bottom-right-radius:5px; }
+  .me .tick { display:block; text-align:right; font-size:10px; opacity:.8; margin-top:2px; letter-spacing:-1px; }
+  .urgent { background:#341522; border:1px solid #ff5470; color:#ffd7de; font-weight:700; }
+  .sys { align-self:center; color:#6b7291; font-size:11px; font-weight:800; letter-spacing:1.6px;
+    text-transform:uppercase; margin:6px 0 2px; text-align:center; animation:bpop .3s; }
+  .typing { display:flex; align-items:center; gap:0; padding:12px 14px; }
+  .typing i { display:inline-block; width:7px; height:7px; border-radius:50%; background:#8b93ad; margin:0 2.5px;
+    animation:blink 1.1s ease-in-out infinite; }
+  .typing i:nth-child(2){ animation-delay:.18s; } .typing i:nth-child(3){ animation-delay:.36s; }
+  @keyframes blink { 0%,60%,100%{ opacity:.25; transform:translateY(0);} 30%{ opacity:1; transform:translateY(-3px);} }
+  .photoB { padding:5px; background:#1d2133; }
+  .photoB canvas { display:block; width:min(250px,64vw); border-radius:14px; }
+  .photoB .cap { color:#8b93ad; font-size:11px; padding:5px 6px 2px; }
+
+  /* ---------- footer: timer + choices + fake input ---------- */
+  #foot { padding:8px 12px calc(10px + env(safe-area-inset-bottom)); z-index:5;
+    background:rgba(14,16,28,.94); border-top:1px solid rgba(255,255,255,.06); }
+  #timerWrap { display:none; height:5px; border-radius:3px; background:rgba(255,255,255,.09); overflow:hidden; margin:2px 2px 4px; }
+  #timerBar { height:100%; width:100%; border-radius:3px; background:linear-gradient(90deg,#a78bfa,#7c5cff); transition:width .1s linear; }
+  #timerBar.low { background:linear-gradient(90deg,#ff5470,#ff3d61); }
+  .opt { display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%; margin-top:8px;
+    padding:13px 16px; border-radius:16px; text-align:left; font-size:15px; font-weight:800; color:#d9d2ff;
+    background:rgba(124,92,255,.13); border:1.5px solid rgba(124,92,255,.65);
+    animation:bpop .35s cubic-bezier(.34,1.56,.64,1) backwards; transition:transform .12s; }
+  .opt:active { transform:scale(.97); background:rgba(124,92,255,.28); }
+  .opt .arr { opacity:.6; font-size:19px; flex-shrink:0; }
+  #fake { display:flex; align-items:center; gap:8px; margin-top:8px; padding:10px 15px; border-radius:22px;
+    background:rgba(255,255,255,.06); color:#5d6480; font-size:13.5px; }
+
+  /* ---------- glitch on the cut-off message ---------- */
+  #app.glitch { animation:glitch .5s steps(2,end) 1; }
+  @keyframes glitch {
+    0%,100% { filter:none; transform:none; }
+    20% { filter:invert(.85) hue-rotate(60deg); transform:translate(3px,-2px); }
+    40% { filter:none; transform:translate(-3px,2px); }
+    60% { filter:invert(.6) hue-rotate(-40deg); transform:translate(1px,0); }
+    80% { filter:none; transform:translate(-2px,1px); }
+  }
+
+  /* ---------- tutorial hand ---------- */
+  #hand { position:fixed; left:0; top:0; font-size:42px; z-index:30; pointer-events:none; opacity:0;
+    filter:drop-shadow(0 4px 8px rgba(0,0,0,.5)); transition:left .4s ease, top .4s ease; }
+  #hand.show { opacity:1; animation:tapAnim .9s ease-in-out infinite; }
+  @keyframes tapAnim { 0%,100%{transform:translate(-30%,-8%) scale(1)} 50%{transform:translate(-30%,-8%) scale(.82)} }
+
+  #fx { position:fixed; inset:0; pointer-events:none; z-index:20; }
+
+  /* ---------- end card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:13px; padding:20px; text-align:center; z-index:40; opacity:0; pointer-events:none; transition:opacity .6s;
+    background:radial-gradient(ellipse at 50% 25%, #2a2450 0%, #07080f 70%); }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .brand { color:#fff; font-size:15px; font-weight:900; letter-spacing:7px; }
+  #end .brand b { color:#7c5cff; }
+  #end .tbc { font-size:min(36px,8.5vw); font-weight:900; letter-spacing:2px;
+    background:linear-gradient(180deg,#fff 30%,#a78bfa); -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent; animation:tbcGlow 1.8s ease-in-out infinite; }
+  @keyframes tbcGlow { 0%,100%{ filter:drop-shadow(0 0 6px rgba(124,92,255,.25)); } 50%{ filter:drop-shadow(0 0 18px rgba(124,92,255,.7)); } }
+  #end .chap { color:#8b93ad; font-size:14px; font-weight:800; letter-spacing:2px; }
+  #end .rt { margin-top:8px; color:#6b7291; font-size:11px; font-weight:900; letter-spacing:2.5px; text-transform:uppercase; }
+  #recap { display:flex; flex-direction:column; gap:7px; align-items:center; }
+  #recap .pill { max-width:320px; padding:8px 16px; border-radius:15px; font-size:13.5px; font-weight:700; color:#d9d2ff;
+    background:rgba(124,92,255,.12); border:1px solid rgba(124,92,255,.5); }
+  #cta { margin-top:10px; padding:16px 52px; border-radius:32px; font-size:19px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#7c5cff,#5636d6); box-shadow:0 5px 0 #3a2492, 0 10px 24px rgba(0,0,0,.5);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#8f88bd; font-size:14px; text-decoration:underline; }
+
+  @media (max-width:340px){
+    #hdr { gap:7px; }
+    #avatar { width:32px; height:32px; font-size:15px; }
+    #name { font-size:14px; }
+    #mute { width:28px; height:28px; font-size:13px; }
+    #get { padding:7px 12px; font-size:12.5px; }
+  }
+  @media (max-height:480px){
+    #hdr { padding-top:6px; padding-bottom:6px; }
+    #meta { padding-top:4px; padding-bottom:4px; }
+    #end { gap:8px; } #end .tbc { font-size:26px; } #cta { padding:12px 40px; font-size:16px; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="app">
+    <div id="hdr">
+      <div id="avatar">?</div>
+      <div id="who">
+        <div id="name">Unknown</div>
+        <div id="status">online</div>
+      </div>
+      <button class="btn" id="mute">🔊</button>
+      <button class="btn" id="get">GET</button>
+    </div>
+    <div id="meta">
+      <span class="cm">✦ CHOICES MATTER</span>
+      <div id="dots"><i></i><i></i><i></i></div>
+    </div>
+    <div id="chat"></div>
+    <div id="foot">
+      <div id="timerWrap"><div id="timerBar"></div></div>
+      <div id="opts"></div>
+      <div id="fake">🔒 replies unlock at choices</div>
+    </div>
+  </div>
+</div>
+<canvas id="fx"></canvas>
+<div id="hand">👆</div>
+<div id="end">
+  <div class="brand">UNREAD<b>●</b></div>
+  <div class="tbc">TO BE CONTINUED…</div>
+  <div class="chap">CHAPTER 2 · LOCKER 9 🔒</div>
+  <div class="rt">your choices shaped this story</div>
+  <div id="recap"></div>
+  <button class="btn" id="cta">CONTINUE THE STORY</button>
+  <button class="btn" id="replay">↺ replay chapter 1</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   UNREAD — trend-format playable: interactive chat story ("chat fiction").
+   The whole conversation is DOM; a fixed canvas overlay adds tap sparks and
+   the "doorcam photo" is drawn into an inline canvas (no image assets).
+   All pacing runs on accumulated sim-time (S.time) → headless-steppable.
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL: 'https://apps.apple.com/app/id000000000',   // replace per campaign
+  choiceTime: 6,        // s to decide before the story picks for you
+  idleHint: 3,          // s of idle on a choice before the tutorial hand
+  autoEnd: 80,          // s — hard stop (auto-play finishes ~65 s anyway)
+};
+
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const $=id=>document.getElementById(id);
+const vibe=p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+
+/* ========================= AUDIO (synth, no assets) ====================== */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  pop(){ this.tone(560,760,0.07,'sine',0.16); this.tone(1120,900,0.05,'sine',0.05,0.015); },
+  send(){ this.tone(500,340,0.09,'sine',0.14); },
+  appear(){ this.tone(392,392,0.10,'triangle',0.10); this.tone(494,494,0.10,'triangle',0.08,0.04); },
+  tick(){ this.tone(950,950,0.035,'square',0.05); },
+  sting(){ this.tone(120,55,0.7,'sawtooth',0.34); this.tone(127,58,0.7,'sawtooth',0.26,0.02);
+           this.tone(2400,180,0.14,'square',0.09); },
+  off(){ this.tone(440,215,0.35,'sine',0.16); },
+  end(){ [392,494,587,784].forEach((f,i)=>this.tone(f,f,0.22,'triangle',0.16,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* ========================= CTA / MRAID =================================== */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{ $('end').classList.remove('show'); newGame(); });
+
+/* ========================= SCRIPT (branching) ============================
+   Steps: sys | them (x, p=pause after, cls, sting) | photo | hdr | pause |
+   choice {opts:[{x, then:[steps spliced in on pick]}]} | end                */
+function buildScript(){ return [
+  {t:'sys', x:'EPISODE 1 · DON’T GO HOME'},
+  {t:'sys', x:'tonight · 11:38 pm'},
+  {t:'them', x:'hey. it’s me.'},
+  {t:'them', x:'don’t go home tonight.'},
+  {t:'them', x:'i know how this sounds. please. just trust me.'},
+  {t:'choice', opts:[
+    {x:'Who is this??', then:[
+      {t:'them', x:'no time for that.'},
+      {t:'hdr', name:'Alex', st:'online'},
+      {t:'them', x:'it’s alex. check your door camera. now.'} ]},
+    {x:'…Alex? Is that you?', then:[
+      {t:'them', x:'you always could tell.'},
+      {t:'hdr', name:'Alex', st:'online'},
+      {t:'them', x:'yes. now check your door camera.'} ]},
+  ]},
+  {t:'photo'},
+  {t:'them', x:'someone’s been standing at your door for an hour.'},
+  {t:'them', x:'and they’re not there for a package.'},
+  {t:'choice', opts:[
+    {x:'I’m calling the police.', then:[
+      {t:'them', x:'NO.', p:0.5},
+      {t:'them', x:'no police. you don’t get it.'},
+      {t:'them', x:'they ARE the police.'} ]},
+    {x:'I’m coming home right now.', then:[
+      {t:'them', x:'NO. promise me you won’t.', p:0.5},
+      {t:'them', x:'you can’t be there when it happens.'} ]},
+  ]},
+  {t:'them', x:'listen carefully. the park where we met. third bench.'},
+  {t:'them', x:'there’s a key taped underneath.'},
+  {t:'them', x:'locker 9 at the station. everything you need is inside.'},
+  {t:'choice', opts:[
+    {x:'Why should I trust you?', then:[
+      {t:'them', x:'because after tonight, i disappear. forever.'},
+      {t:'them', x:'and you’re the only one who ever knew the real me.'} ]},
+    {x:'I’m on my way.', then:[
+      {t:'them', x:'i knew you would.'},
+      {t:'them', x:'…i never stopped thinking about you.'} ]},
+  ]},
+  {t:'pause', d:1.4},
+  {t:'them', x:'wait.', p:0.5},
+  {t:'them', x:'someone’s here.', p:0.7},
+  {t:'them', x:'if i go quiet, whatever you do, DON’T—', cls:'urgent', sting:true, p:1.0},
+  {t:'hdr', name:'Alex', st:'offline'},
+  {t:'sys', x:'alex is offline'},
+  {t:'end'},
+]; }
+
+/* ========================= STATE ========================================= */
+const S={
+  phase:'play',          // play | ending | end
+  time:0, pc:0, stage:'idle',   // idle | typing | choice
+  nextAt:0, script:[],
+  picked:[],             // chosen option texts (for the end-card recap)
+  deadline:-1, choiceShownAt:-1, lastTickSec:99,
+  endAt:-1, lastInput:0,
+  baseStatus:'online',
+  parts:[],
+};
+
+/* ========================= CHAT DOM ====================================== */
+const chat=$('chat');
+function scrollBot(){ chat.scrollTop=chat.scrollHeight; }
+function addBubble(side,txt,cls){
+  const d=document.createElement('div');
+  d.className='b '+side+(cls?' '+cls:'');
+  d.textContent=txt;
+  if(side==='me'){ const t=document.createElement('span'); t.className='tick'; t.textContent='✓✓'; d.appendChild(t); }
+  chat.appendChild(d); scrollBot();
+  if(side==='them'){ Sfx.pop(); vibe(10); }
+  return d;
+}
+function addSys(txt){
+  const d=document.createElement('div'); d.className='sys'; d.textContent=txt;
+  chat.appendChild(d); scrollBot();
+}
+const typingEl=document.createElement('div');
+typingEl.className='b them typing'; typingEl.innerHTML='<i></i><i></i><i></i>';
+function setStatus(txt){
+  $('status').textContent = txt!==undefined ? txt : S.baseStatus;
+  $('status').classList.toggle('off', (txt===undefined?S.baseStatus:txt)==='offline');
+}
+function showTyping(){ chat.appendChild(typingEl); scrollBot(); if(S.baseStatus!=='offline') setStatus('typing…'); }
+function hideTyping(){ typingEl.remove(); setStatus(); }
+function setHdr(name,st){
+  $('name').textContent=name;
+  $('avatar').textContent = name==='Unknown' ? '?' : name[0];
+  S.baseStatus=st; setStatus();
+  if(st==='offline') Sfx.off();
+}
+const typingTime=x=>0.55+Math.min(1.4,x.length*0.028);
+
+/* ---- doorcam "photo" drawn on an inline canvas (no image assets) -------- */
+function addPhoto(){
+  const d=document.createElement('div'); d.className='b them photoB';
+  const cv=document.createElement('canvas'); cv.width=480; cv.height=300;
+  drawDoorcam(cv.getContext('2d'),480,300);
+  const cap=document.createElement('div'); cap.className='cap'; cap.textContent='📷 doorcam_2341.jpg';
+  d.appendChild(cv); d.appendChild(cap);
+  chat.appendChild(d); scrollBot();
+  Sfx.pop(); vibe([15,30,15]);
+}
+function drawDoorcam(g,W,H){
+  const bg=g.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#0c1724'); bg.addColorStop(1,'#050910');
+  g.fillStyle=bg; g.fillRect(0,0,W,H);
+  g.fillStyle='#0e1a28'; g.fillRect(0,0,W,H*0.78);          // wall
+  g.fillStyle='#091220'; g.fillRect(0,H*0.78,W,H*0.22);     // floor
+  const dx=W*0.54,dw=W*0.30,dy=H*0.09,dh=H*0.69;            // door
+  g.fillStyle='#132235'; g.fillRect(dx,dy,dw,dh);
+  g.strokeStyle='#1f3a57'; g.lineWidth=3; g.strokeRect(dx,dy,dw,dh);
+  g.strokeStyle='#1a3049'; g.lineWidth=2;
+  g.strokeRect(dx+dw*0.15,dy+dh*0.08,dw*0.7,dh*0.34);
+  g.strokeRect(dx+dw*0.15,dy+dh*0.52,dw*0.7,dh*0.36);
+  g.fillStyle='#2c4a6b'; g.beginPath(); g.arc(dx+dw*0.86,dy+dh*0.52,4.5,0,7); g.fill();
+  const gl=g.createRadialGradient(W*0.16,H*0.11,4,W*0.16,H*0.11,W*0.34);   // porch light
+  gl.addColorStop(0,'rgba(190,220,255,.45)'); gl.addColorStop(1,'rgba(190,220,255,0)');
+  g.fillStyle=gl; g.fillRect(0,0,W,H);
+  g.fillStyle='#cfe6ff'; g.beginPath(); g.arc(W*0.16,H*0.11,5,0,7); g.fill();
+  // the silhouette — just standing there
+  const px=W*0.36, base=H*0.80, ph=H*0.52;
+  g.fillStyle='rgba(2,4,8,.93)';
+  g.beginPath(); g.arc(px,base-ph,ph*0.115,0,7); g.fill();
+  g.beginPath();
+  g.moveTo(px-ph*0.16,base);
+  g.quadraticCurveTo(px-ph*0.21,base-ph*0.55,px-ph*0.13,base-ph*0.80);
+  g.quadraticCurveTo(px,base-ph*0.94,px+ph*0.13,base-ph*0.80);
+  g.quadraticCurveTo(px+ph*0.21,base-ph*0.55,px+ph*0.16,base);
+  g.closePath(); g.fill();
+  g.fillStyle='rgba(0,0,0,.5)';
+  g.beginPath(); g.ellipse(px,base+4,ph*0.3,6,0,0,7); g.fill();
+  g.fillStyle='rgba(255,255,255,.05)';                       // IR grain
+  for(let i=0;i<240;i++) g.fillRect(Math.random()*W,Math.random()*H,1.5,1.5);
+  g.fillStyle='rgba(255,255,255,.025)';                      // scanlines
+  for(let y=0;y<H;y+=4) g.fillRect(0,y,W,1);
+  const vg=g.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.9);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.55)');
+  g.fillStyle=vg; g.fillRect(0,0,W,H);
+  g.fillStyle='#ff4d5e'; g.beginPath(); g.arc(16,16,5,0,7); g.fill();
+  g.fillStyle='#e8eaf6'; g.font='700 13px monospace'; g.textBaseline='middle';
+  g.textAlign='left'; g.fillText('REC',27,17);
+  g.textAlign='right'; g.fillText('FRONT DOOR · 11:41 PM',W-12,H-15);
+}
+
+/* ========================= CHOICES ======================================= */
+let optEls=[];
+function showChoices(it){
+  S.stage='choice'; S.choiceShownAt=S.time; S.deadline=S.time+CONFIG.choiceTime; S.lastTickSec=99;
+  const o=$('opts'); o.innerHTML=''; optEls=[];
+  it.opts.forEach((op,i)=>{
+    const b=document.createElement('button');
+    b.className='btn opt'; b.style.animationDelay=(i*0.12)+'s';
+    b.innerHTML='<span></span><span class="arr">›</span>';
+    b.firstChild.textContent=op.x;
+    b.addEventListener('click',()=>{ Sfx.ensure(); choose(i); });
+    o.appendChild(b); optEls.push(b);
+  });
+  $('timerWrap').style.display='block'; setTimer(1);
+  $('fake').textContent='choose your reply ↑';
+  Sfx.appear(); scrollBot();
+}
+function hideChoices(){
+  $('opts').innerHTML=''; optEls=[];
+  $('timerWrap').style.display='none';
+  $('fake').textContent='🔒 replies unlock at choices';
+}
+function setTimer(f){
+  const b=$('timerBar');
+  b.style.width=(f*100)+'%';
+  b.classList.toggle('low',f<0.35);
+}
+function syncDots(){
+  [...$('dots').children].forEach((el,i)=>el.classList.toggle('on',i<S.picked.length));
+}
+function choose(i,auto=false){
+  if(S.phase!=='play'||S.stage!=='choice') return false;
+  const it=S.script[S.pc], o=it&&it.opts&&it.opts[i];
+  if(!o) return false;
+  S.picked.push(o.x); syncDots();
+  if(!auto&&optEls[i]){ const r=optEls[i].getBoundingClientRect(); burst(r.left+r.width/2,r.top+r.height/2); }
+  hideChoices();
+  addBubble('me',o.x);
+  Sfx.send(); vibe(12);
+  S.script.splice(S.pc+1,0,...(o.then||[]));
+  S.pc++; S.stage='idle'; S.nextAt=S.time+1.0;
+  S.deadline=-1; S.lastInput=S.time;
+  return true;
+}
+
+/* ========================= STORY ENGINE ================================== */
+function advance(){
+  const it=S.script[S.pc];
+  if(!it){ beginEnd(); return; }
+  if(S.stage==='typing'){
+    hideTyping();
+    if(it.t==='photo') addPhoto(); else addBubble('them',it.x,it.cls);
+    if(it.sting) doSting();
+    S.pc++; S.stage='idle';
+    S.nextAt=S.time+(it.p!==undefined?it.p:0.8);
+    return;
+  }
+  switch(it.t){
+    case 'sys':   addSys(it.x); S.pc++; S.nextAt=S.time+0.7; break;
+    case 'them':
+    case 'photo': showTyping(); S.stage='typing';
+                  S.nextAt=S.time+(it.t==='photo'?1.8:typingTime(it.x)); break;
+    case 'hdr':   setHdr(it.name,it.st); S.pc++; S.nextAt=S.time+0.25; break;
+    case 'pause': S.pc++; S.nextAt=S.time+it.d; break;
+    case 'choice': showChoices(it); break;
+    case 'end':   S.pc++; beginEnd(); break;
+    default:      S.pc++;
+  }
+}
+function doSting(){
+  const a=$('app');
+  a.classList.remove('glitch'); void a.offsetWidth; a.classList.add('glitch');
+  Sfx.sting(); vibe([40,60,40]);
+}
+function beginEnd(){
+  if(S.phase!=='play') return;
+  S.phase='ending'; S.endAt=S.time+1.6;
+  hideTyping(); hideChoices();
+}
+function showEnd(){
+  S.phase='end';
+  const rc=$('recap'); rc.innerHTML='';
+  for(const p of S.picked){
+    const d=document.createElement('div'); d.className='pill'; d.textContent='“'+p+'”';
+    rc.appendChild(d);
+  }
+  $('end').classList.add('show');
+  Sfx.end();
+}
+function newGame(){
+  chat.innerHTML='';
+  S.phase='play'; S.time=0; S.pc=0; S.stage='idle'; S.nextAt=0.5;
+  S.script=buildScript(); S.picked=[];
+  S.deadline=-1; S.choiceShownAt=-1; S.lastTickSec=99; S.endAt=-1; S.lastInput=0;
+  S.parts=[];
+  setHdr('Unknown','online');
+  syncDots(); hideChoices();
+}
+
+/* ========================= PARTICLES (fx overlay) ======================== */
+function burst(x,y){
+  for(let i=0;i<16&&S.parts.length<120;i++)
+    S.parts.push({x,y,vx:rnd(-170,170),vy:rnd(-240,30),life:rnd(.35,.6),age:0,
+      r:rnd(2,4.5),c:i%3?'#a78bfa':'#ffffff',grav:520});
+}
+
+/* ========================= UPDATE (headless-steppable) =================== */
+function update(dt){
+  S.time+=dt;
+  if(S.phase==='play'){
+    if(S.stage==='choice'){
+      const rem=S.deadline-S.time;
+      setTimer(clamp(rem/CONFIG.choiceTime,0,1));
+      const sec=Math.ceil(rem);
+      if(rem<=3&&rem>0&&sec!==S.lastTickSec){ S.lastTickSec=sec; Sfx.tick(); }
+      if(rem<=0) choose(0,true);
+    } else if(S.time>=S.nextAt) advance();
+    if(S.phase==='play'&&S.time>CONFIG.autoEnd) beginEnd();
+  } else if(S.phase==='ending'&&S.endAt>=0&&S.time>=S.endAt){ S.endAt=-1; showEnd(); }
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt;
+    if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+  }
+  updateHand();
+}
+
+/* ========================= RENDER (fx overlay) =========================== */
+const fx=$('fx'), fctx=fx.getContext('2d');
+let vw=0,vh=0,dpr=1;
+function resize(){ vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  fx.width=vw*dpr; fx.height=vh*dpr;
+  fx.style.width=vw+'px'; fx.style.height=vh+'px'; }   // fixed inset:0 alone won't size a canvas
+addEventListener('resize',resize); resize();
+function render(){
+  fctx.setTransform(dpr,0,0,dpr,0,0);
+  fctx.clearRect(0,0,vw,vh);
+  for(const p of S.parts){
+    fctx.globalAlpha=1-p.age/p.life; fctx.fillStyle=p.c;
+    fctx.beginPath(); fctx.arc(p.x,p.y,p.r,0,7); fctx.fill();
+  }
+  fctx.globalAlpha=1;
+}
+
+/* ---------- tutorial hand (points at the first choice) ------------------- */
+function updateHand(){
+  const h=$('hand');
+  const ref=Math.max(S.choiceShownAt,S.lastInput);
+  if(S.phase!=='play'||S.stage!=='choice'||S.time-ref<CONFIG.idleHint||!optEls[0]){
+    h.classList.remove('show'); return;
+  }
+  const r=optEls[0].getBoundingClientRect();
+  h.style.left=(r.left+r.width*0.72)+'px';
+  h.style.top=(r.top+r.height*0.62)+'px';
+  h.classList.add('show');
+}
+document.addEventListener('pointerdown',()=>{ S.lastInput=S.time; },{passive:true});
+
+/* ========================= MAIN LOOP ===================================== */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  if(!$('end').classList.contains('show')) update(dt);
+  render();
+}
+function start(){ newGame(); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* debug hooks for automated testing */
+window.__game={S,CONFIG,choose,newGame,beginEnd,
+  picked:()=>S.picked.slice(),
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); render(); }};
+</script>
+</body>
+</html>

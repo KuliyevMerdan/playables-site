@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Merge Bakery — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#1e120c; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(25px,5.7vw); font-weight:900; letter-spacing:3px; color:#ffcc66;
+    text-shadow:0 2px 0 #7a4a10, 0 4px 12px rgba(0,0,0,.55); }
+  #coins { margin-top:5px; display:inline-flex; align-items:center; gap:7px; padding:5px 15px; border-radius:16px;
+    background:rgba(0,0,0,.34); color:#fff; font-weight:800; font-size:15px; transition:transform .12s; }
+  #coins .c { width:15px; height:15px; border-radius:50%;
+    background:radial-gradient(circle at 34% 30%, #fff6cf 0%, #ffcc4d 45%, #b8760c 100%); box-shadow:0 0 7px rgba(255,204,77,.6); }
+  #coins.pop { transform:scale(1.22); }
+
+  /* a short portrait frame letterboxes the scene with thin bars, so the order
+     ticket rides up under the header — shrink the header instead of overlapping */
+  @media (orientation:portrait) and (max-height:620px){
+    #title { font-size:min(19px,5.2vw); letter-spacing:2px; }
+    #coins { margin-top:3px; padding:3px 11px; font-size:13px; }
+    #coins .c { width:12px; height:12px; }
+  }
+  @media (orientation:landscape) and (max-height:520px){
+    #hdr { top:calc(4px + env(safe-area-inset-top)); }
+    #title { font-size:19px; letter-spacing:2px; }
+    #coins { margin:0 0 0 9px; padding:3px 11px; font-size:13px; vertical-align:middle; }
+  }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- Toast ---------- */
+  /* sits in the band between the header and the order ticket */
+  #toast { position:absolute; top:15%; left:0; right:0; text-align:center; font-size:min(36px,8.2vw); font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.6);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#ffcc66; } #toast.up { color:#8affc1; } #toast.help { color:#7ee0ff; }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    background:radial-gradient(ellipse at 50% 30%, #5a3720 0%, #1a100a 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:96px; height:96px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:linear-gradient(160deg,#ffe3a8,#e09a2c); box-shadow:0 10px 30px rgba(0,0,0,.55), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:min(30px,7vw); font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.45); }
+  #endOrders { font-size:min(28px,6.5vw); letter-spacing:5px; }
+  #end p  { color:#c0a78f; font-size:16px; margin-top:-4px; text-align:center; padding:0 34px; line-height:1.35; }
+  #cta { margin-top:6px; padding:18px 64px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#9c8570; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="hdr"><div id="title">MERGE BAKERY</div>
+  <div id="coins"><span class="c"></span><span id="coinTxt">0</span></div></div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="end">
+  <div class="icon">🎂</div>
+  <h1>Bakery of the year!</h1>
+  <div id="endOrders">⭐⭐⭐</div>
+  <p id="endSub">3 orders filled · 1240 coins earned.</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Watch again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   MERGE BAKERY — self-contained playable ad (merge-2 board)
+   Scene designed in 720x1280 virtual units, letterbox-scaled to viewport.
+   All timing runs on sim time (S.time) so the whole game is headless-steppable
+   through window.__game.tick().
+
+   The problem this design solves: in a merge-2 game a tier-N item costs
+   2^(N-1) base items, so a straight "bake a cake" goal is 32 taps — far past
+   what an ad can spend. The answer here is an escalating counter: finishing an
+   order UPGRADES the generator to the next tier, so every order costs roughly
+   the same handful of actions and the fantasy ("the bakery grows") does the
+   work the grind would otherwise have to.
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL:'https://apps.apple.com/app/id000000000',  // replace per campaign
+  genCool:0.62,          // s generator cooldown
+  flyT:0.26,             // s an item spends in the air on a merge/spawn
+  chainT:0.22,           // s before an auto chain-merge fires
+  deliverT:0.55,         // s the finished pastry takes to reach the order ticket
+  orderPause:1.6,        // s celebration between orders
+  idleHint:3.0,          // s idle -> hint hand on the best pair
+  idleAuto:6.5,          // s idle -> the ad plays itself, so it always self-completes
+  autoStep:0.45,         // s between autopilot actions
+  autoDrag:0.46,         // s the autopilot's hand takes to carry an item
+  stock:6,               // items the ad keeps on the counter before it merges again
+  helpAfter:8.0,         // s without a merge -> the sous-chef merges one for free
+  winPause:2.2,          // s on the last order before the end card
+  autoEnd:110,           // s -> force end card
+};
+
+/* ---------- tiny helpers ---------- */
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const rnd   = (a,b)=>a+Math.random()*(b-a);
+const ease  = t=>t*t*(3-2*t);
+const $ = id=>document.getElementById(id);
+const vibe = p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+
+/* =========================================================================
+   AUDIO — synthesized, no assets
+   ========================================================================= */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  lift(){ this.tone(360,520,0.07,'sine',0.05); },
+  drop(){ this.tone(240,180,0.07,'triangle',0.05); },
+  spawn(){ this.tone(420,660,0.10,'triangle',0.08); },
+  merge(tier,chain){                                   // pitch climbs with tier AND with the chain
+    const f=340*Math.pow(1.16,tier)*Math.pow(1.09,Math.min(chain,8));
+    this.tone(f,f*1.7,0.13,'sine',0.13); this.tone(f*2,f*1.3,0.08,'triangle',0.06,0.03); },
+  nope(){ this.tone(200,150,0.10,'square',0.05); },
+  deliver(){ [784,988,1319].forEach((f,i)=>this.tone(f,f,0.13,'triangle',0.11,i*0.07)); },
+  order(){ [523,659,784,1047].forEach((f,i)=>this.tone(f,f,0.18,'triangle',0.15,i*0.08)); },
+  upgrade(){ this.tone(180,760,0.42,'sawtooth',0.09); this.tone(90,380,0.42,'square',0.05); },
+  win(){ [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.20,'triangle',0.18,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* =========================================================================
+   CTA / MRAID
+   ========================================================================= */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{ $('end').classList.remove('show'); newGame(); });
+
+/* =========================================================================
+   RENDER SETUP — 720x1280 scene, letterboxed
+   ========================================================================= */
+const cv=$('game'), ctx=cv.getContext('2d');
+const SW=720, SH=1280;
+let vw=0, vh=0, dpr=1, scale=1, ox=0, oy=0;
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';   // fixed inset:0 alone won't size a canvas
+  scale=Math.min(vw/SW,vh/SH); ox=(vw-SW*scale)/2; oy=(vh-SH*scale)/2;
+}
+addEventListener('resize',resize); resize();
+const toScene = (px,py)=>[(px-ox)/scale, (py-oy)/scale];
+
+/* =========================================================================
+   BOARD — 5x6 counter of 110-unit cells
+   ========================================================================= */
+const COLS=5, ROWS=5, CELL=110;
+const BW=COLS*CELL, BH=ROWS*CELL;
+const BX=(SW-BW)/2, BY=340;              // counter spans 85..635 x 340..890
+const GX=360, GY=1035;                   // generator station
+const TX=360, TY=224;                    // order ticket centre
+const cellX = c=>BX+c*CELL+CELL/2;
+const cellY = r=>BY+r*CELL+CELL/2;
+const inB = (r,c)=>r>=0&&r<ROWS&&c>=0&&c<COLS;
+
+/* the ladder. Shapes are all different, so nothing here depends on colour. */
+const TIERS=[
+  {name:'Dough',     coin:10},
+  {name:'Bun',       coin:22},
+  {name:'Croissant', coin:48},
+  {name:'Cupcake',   coin:110},
+  {name:'Cake',      coin:260},
+];
+const MAXT=TIERS.length-1;
+
+/* =========================================================================
+   ORDERS — the escalation that makes a merge-2 board fit inside an ad.
+   `gen` is the tier the generator produces WHILE this order is open, so each
+   order costs ~7 actions instead of 2^n taps.
+   ========================================================================= */
+const ORDERS=[
+  {t:2, n:2, gen:0},     // 2 croissants — the four seeded buns are exactly enough
+  {t:3, n:1, gen:1},     // 1 cupcake    — oven upgraded: the generator makes buns
+  {t:4, n:1, gen:2},     // 1 cake       — upgraded again: it makes croissants
+];
+/* seed: digits are 1-based tiers, '.' is an empty cell.
+   A CHECKERBOARD of dough and buns, and the choice matters twice over:
+   no two equal items touch (so nothing merges or chains before the player has
+   done anything), while every item touches items of the *other* tier — which
+   is the exact arrangement a chain needs. Merging two dough into a cell that
+   neighbours a bun makes a bun, which then merges with that neighbour on its
+   own. A scattered seed produces no adjacency and the cascade system, which is
+   the whole reason this genre is fun, never fires once. */
+const SEED=[
+  '.....',
+  '21212',
+  '12121',
+  '21212',
+  '.....',
+];
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const S = {
+  mode:'play',              // play | order | end
+  time:0, oi:0, done:0,
+  g:[], flyers:[], parts:[], floats:[], timers:[],
+  drag:null, lock:0, genCd:0, chain:0, bestChain:0,
+  coins:0, merges:0, taps:0, helps:0, junk:0,
+  lastInput:0, lastMerge:0, lastAuto:0, autoOn:false, handPh:0, tip:1, shake:0,
+};
+function later(sec,fn){ S.timers.push({t:S.time+sec,fn}); }
+
+function blank(){ const g=[]; for(let r=0;r<ROWS;r++) g.push(new Array(COLS).fill(null)); return g; }
+function seedGrid(){
+  const g=blank();
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const ch=SEED[r] && SEED[r][c];
+    if(ch && ch!=='.') g[r][c]={t:+ch-1, pop:1, fly:false};
+  }
+  return g;
+}
+function newGame(){
+  S.g=seedGrid(); S.flyers=[]; S.parts=[]; S.floats=[]; S.timers=[];
+  S.drag=null; S.lock=0; S.genCd=0; S.chain=0; S.bestChain=0;
+  S.oi=0; S.done=0; S.coins=0; S.merges=0; S.taps=0; S.helps=0; S.junk=0;
+  S.mode='play'; S.time=0; S.lastInput=0; S.lastMerge=0; S.lastAuto=0;
+  S.autoOn=false; S.handPh=0; S.tip=1; S.shake=0;
+  coinUpd(false); $('end').classList.remove('show');
+}
+
+/* ---------- grid helpers ---------- */
+const order = ()=>ORDERS[Math.min(S.oi,ORDERS.length-1)];
+const genTier = ()=>order().gen;
+/** an item you may actually touch: present and not mid-flight */
+function at(r,c){ if(!inB(r,c)) return null; const it=S.g[r][c]; return (it && !it.fly) ? it : null; }
+function cellUnder(x,y){
+  const c=Math.floor((x-BX)/CELL), r=Math.floor((y-BY)/CELL);
+  return inB(r,c) ? [r,c] : null;
+}
+function freeCells(){
+  const a=[]; for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(!S.g[r][c]) a.push([r,c]);
+  return a;
+}
+/** orthogonal neighbour holding the same tier — the chain-merge test */
+function twinNext(cell,t){
+  const [r,c]=cell;
+  for(const d of [[-1,0],[1,0],[0,-1],[0,1]]){
+    const nr=r+d[0], nc=c+d[1], it=at(nr,nc);
+    if(it && it.t===t) return [nr,nc];
+  }
+  return null;
+}
+/** spawn where it does the most good: next to a twin if possible, else nearest
+    the generator, so the counter clusters instead of scattering */
+function spawnCell(t){
+  const free=freeCells(); if(!free.length) return null;
+  let best=null, bs=-1e9;
+  for(const [r,c] of free){
+    let s=0;
+    if(twinNext([r,c],t)) s+=100;
+    s -= Math.hypot(cellX(c)-GX, cellY(r)-GY)/100;
+    if(s>bs){ bs=s; best=[r,c]; }
+  }
+  return best;
+}
+
+/* =========================================================================
+   ACTIONS — one merge path. The player's drop, the autopilot's hand, the
+   chain-merge and the sous-chef rescue all end up in mergeInto(), so anything
+   proved about one of them holds for the others.
+   ========================================================================= */
+function fly(x0,y0,x1,y1,tier,dur,on){ S.flyers.push({x0,y0,x1,y1,tier,t:0,dur,on}); }
+
+function mergeInto(item,sx,sy,to){
+  S.lock++;
+  fly(sx,sy,cellX(to[1]),cellY(to[0]),item.t,CONFIG.flyT,()=>{
+    S.lock--;
+    const tgt=S.g[to[0]][to[1]];
+    if(!tgt || tgt.fly || tgt.t!==item.t){        // target moved on: just land the item
+      if(!S.g[to[0]][to[1]]) S.g[to[0]][to[1]]=item;
+      else { const f=freeCells()[0]; if(f) S.g[f[0]][f[1]]=item; }
+      return;
+    }
+    finishMerge(to,item.t);
+  });
+}
+function finishMerge(to,t){
+  const nt=Math.min(t+1,MAXT);
+  S.g[to[0]][to[1]]={t:nt,pop:0,fly:false};
+  S.merges++; S.lastMerge=S.time; S.chain++;
+  S.bestChain=Math.max(S.bestChain,S.chain);
+  const gain=TIERS[nt].coin*S.chain;
+  S.coins+=gain; coinUpd(true);
+  const x=cellX(to[1]), y=cellY(to[0]);
+  burst(x,y,TIER_COL[nt],10); S.shake=Math.max(S.shake,2.5);
+  S.floats.push({x,y:y-12,txt:'+'+gain,size:32,color:'#ffcc66',age:0,life:0.8});
+  Sfx.merge(nt,S.chain); vibe(12);
+  if(S.chain>=2){                                 // cascade words, lifted from match-3
+    const w=['','','TASTY!','DELICIOUS!','BAKER’S BEST!','MICHELIN!'][Math.min(S.chain,5)];
+    S.floats.push({x:SW/2,y:BY-30,txt:w+' ×'+S.chain,size:42,color:'#8affc1',age:0,life:0.95});
+    S.shake=Math.min(3+S.chain*2,12);
+  }
+  const tw=twinNext(to,nt);                       // chain: the fresh item has a twin next door
+  if(tw && nt!==order().t){
+    later(CONFIG.chainT,()=>{
+      const src=at(tw[0],tw[1]), dst=at(to[0],to[1]);
+      if(src && dst && src.t===dst.t){ S.g[tw[0]][tw[1]]=null; mergeInto(src,cellX(tw[1]),cellY(tw[0]),to); }
+      else S.chain=0;
+    });
+  }else S.chain=0;
+}
+/** anything matching the open order ships itself — the order always wins over
+    a chain, so a finished pastry can never be merged past the goal */
+function deliverReady(){
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const it=at(r,c);
+    if(it && it.t===order().t){ deliver([r,c]); return true; }
+  }
+  return false;
+}
+function deliver(cell){
+  const it=S.g[cell[0]][cell[1]]; if(!it) return;
+  S.g[cell[0]][cell[1]]=null; S.lock++;
+  const slot=TX+(S.done-(order().n-1)/2)*64+34;
+  fly(cellX(cell[1]),cellY(cell[0]),slot,TY+10,it.t,CONFIG.deliverT,()=>{
+    S.lock--; S.done++;
+    S.coins+=TIERS[it.t].coin; coinUpd(true);
+    burst(slot,TY+10,'#ffcc66',16); Sfx.deliver(); vibe(18);
+    if(S.done>=order().n) orderDone();
+  });
+}
+function orderDone(){
+  S.mode='order'; Sfx.order(); vibe([20,40,20]);
+  confetti(TX,TY+60); toast('ORDER READY!','good');
+  later(CONFIG.orderPause,()=>{
+    S.oi++; S.done=0;
+    if(S.oi>=ORDERS.length){ showEnd(); return; }
+    S.mode='play'; S.lastMerge=S.time;
+    Sfx.upgrade(); vibe([15,30,15]);
+    toast('OVEN UPGRADED!','up');                 // the generator now makes the next tier up
+  });
+}
+function genTap(byUser){
+  if(S.mode!=='play' || S.genCd>0) return false;
+  if(byUser!==false){ S.lastInput=S.time; S.handPh=0; }
+  const t=genTier();
+  let cell=spawnCell(t);
+  if(!cell){ junkClear(); cell=spawnCell(t); }    // ad-safety: a full counter never blocks
+  if(!cell) return false;
+  S.genCd=CONFIG.genCool; S.taps++;
+  S.g[cell[0]][cell[1]]={t,pop:0,fly:true};       // reserve the cell while the item is airborne
+  S.lock++;
+  fly(GX,GY-14,cellX(cell[1]),cellY(cell[0]),t,CONFIG.flyT,()=>{
+    S.lock--; const it=S.g[cell[0]][cell[1]];
+    if(it){ it.fly=false; it.pop=0; }
+    Sfx.spawn();
+  });
+  return true;
+}
+/** counter full -> the lowest-tier item goes in the bin, so the generator is
+    never dead and the board can never lock */
+function junkClear(){
+  let w=null;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const it=at(r,c); if(it && (!w || it.t<w.t)) w={t:it.t,r,c};
+  }
+  if(!w) return;
+  S.g[w.r][w.c]=null; S.junk++;
+  burst(cellX(w.c),cellY(w.r),'#cfa77a',12);
+  toast('COUNTER CLEARED','help'); Sfx.nope();
+}
+
+/* ---------- what the ad wants to do next; the hint hand shows the same ---- */
+function bestAction(){
+  const items=[];
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ const it=at(r,c); if(it) items.push({r,c,t:it.t}); }
+  const genReady=S.genCd<=0 && freeCells().length>0;
+  // keep the counter stocked. Merging the moment a pair exists empties the
+  // board between every action: it reads as an abandoned bakery and, worse,
+  // nothing is ever adjacent to anything, so no chain can form.
+  if(genReady && items.length<CONFIG.stock) return {type:'gen'};
+  let best=null, bs=-1e9;
+  for(let i=0;i<items.length;i++) for(let j=i+1;j<items.length;j++){
+    if(items[i].t!==items[j].t) continue;
+    const t=items[i].t;
+    for(const p of [[items[i],items[j]],[items[j],items[i]]]){
+      const a=p[0], b=p[1];
+      // a chain outranks tier on purpose. Scoring tier first drains the high
+      // tiers before the low ones ever meet a twin, which is exactly the order
+      // that makes cascades impossible — the run then never shows the feature.
+      let s=t*10;
+      if(twinNext([b.r,b.c],t+1)) s+=40;          // merging into this one starts a chain
+      s-=Math.hypot(a.r-b.r,a.c-b.c)*0.1;
+      if(s>bs){ bs=s; best={type:'merge',from:[a.r,a.c],to:[b.r,b.c]}; }
+    }
+  }
+  if(best) return best;
+  if(genReady) return {type:'gen'};
+  return null;
+}
+
+/* =========================================================================
+   INPUT — drag an item onto its twin
+   ========================================================================= */
+function pickUp(p){
+  if(Math.hypot(p[0]-GX,p[1]-GY)<88){ genTap(true); S.tip=0; return; }
+  const cell=cellUnder(p[0],p[1]); if(!cell) return;
+  const it=at(cell[0],cell[1]); if(!it) return;
+  S.g[cell[0]][cell[1]]=null;
+  S.drag={item:it,from:cell,x:p[0],y:p[1],auto:false};
+  Sfx.lift(); S.tip=0;
+}
+function dropAt(d,cell){
+  if(!cell){ restore(d); return; }
+  const tgt=at(cell[0],cell[1]);
+  if(!tgt){
+    if(S.g[cell[0]][cell[1]]){ restore(d); return; }   // reserved by an incoming spawn
+    S.g[cell[0]][cell[1]]=d.item; Sfx.drop(); return;
+  }
+  if(tgt.t===d.item.t){ S.chain=0; mergeInto(d.item,d.x,d.y,cell); return; }
+  restore(d);
+}
+function restore(d){
+  if(!S.g[d.from[0]][d.from[1]]) S.g[d.from[0]][d.from[1]]=d.item;
+  else { const f=freeCells()[0]; if(f) S.g[f[0]][f[1]]=d.item; }
+  Sfx.nope();
+}
+function pointerDown(e){
+  Sfx.ensure(); S.lastInput=S.time; S.handPh=0; S.autoOn=false;   // player takes over
+  if(S.drag && S.drag.auto){ S.g[S.drag.from[0]][S.drag.from[1]]=S.drag.item; S.drag=null; }
+  if(S.mode!=='play') return;
+  pickUp(toScene(e.clientX,e.clientY));
+}
+function pointerMove(e){
+  if(!S.drag || S.drag.auto) return;
+  const p=toScene(e.clientX,e.clientY); S.drag.x=p[0]; S.drag.y=p[1];
+}
+function pointerUp(){
+  if(!S.drag || S.drag.auto) return;
+  const d=S.drag; S.drag=null; S.lastInput=S.time;
+  dropAt(d,cellUnder(d.x,d.y));
+}
+cv.addEventListener('pointerdown',pointerDown);
+addEventListener('pointermove',pointerMove);      // on window: the HUD buttons are
+addEventListener('pointerup',pointerUp);          // pointer-events:auto and would eat the drag
+addEventListener('pointercancel',pointerUp);
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would break the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* =========================================================================
+   PARTICLES / FLOATS  (float system lifted from match-3)
+   ========================================================================= */
+const TIER_COL=['#f2dfc0','#eeb45c','#e09a3c','#ff9ec4','#fff0d8'];
+function burst(x,y,color,n){
+  for(let i=0;i<n;i++) S.parts.push({x,y,vx:rnd(-230,230),vy:rnd(-280,90),
+    life:rnd(.30,.62),age:0,color,r:rnd(2.5,6),grav:900,kind:'dot'});
+}
+function confetti(x,y){
+  const cols=['#ffcc66','#42d76c','#ff9ec4','#7ee0ff','#ff9f43'];
+  for(let i=0;i<95;i++) S.parts.push({x:x+rnd(-70,70),y,vx:rnd(-400,400),vy:rnd(-780,-260),
+    life:rnd(.9,1.8),age:0,color:cols[i%cols.length],r:rnd(3,6),grav:980,rot:rnd(0,7),vr:rnd(-9,9),kind:'conf'});
+}
+function updateParts(dt){
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt;
+    if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+    if(p.rot!==undefined) p.rot+=p.vr*dt;
+  }
+  for(let i=S.floats.length-1;i>=0;i--){
+    const f=S.floats[i]; f.age+=dt; f.y-=52*dt;
+    if(f.age>f.life) S.floats.splice(i,1);
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+function coinUpd(pop){
+  $('coinTxt').textContent=S.coins;
+  if(pop){ const g=$('coins'); g.classList.remove('pop'); void g.offsetWidth; g.classList.add('pop'); }
+}
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  later(1.4,()=>t.classList.remove('show'));
+}
+function showEnd(){
+  S.mode='end';
+  const filled=Math.min(S.oi,ORDERS.length);
+  $('endOrders').textContent='⭐'.repeat(Math.max(filled,1));
+  $('end').querySelector('h1').textContent = filled>=ORDERS.length ? 'Bakery of the year!' : 'Nice baking!';
+  $('endSub').textContent = filled>=ORDERS.length
+    ? `${filled} orders filled · ${S.coins} coins · ${S.merges} merges, best combo ×${Math.max(S.bestChain,1)}.`
+    : `${S.coins} coins earned. ${ORDERS.length-filled} order${ORDERS.length-filled>1?'s are':' is'} still waiting.`;
+  $('end').classList.add('show');
+}
+
+/* =========================================================================
+   UPDATE — everything on sim time
+   ========================================================================= */
+function update(dt){
+  S.time+=dt;
+  for(let i=S.timers.length-1;i>=0;i--){                    // sim-time scheduler
+    if(S.time>=S.timers[i].t){ const fn=S.timers[i].fn; S.timers.splice(i,1); fn(); }
+  }
+  updateParts(dt);
+  for(let i=S.flyers.length-1;i>=0;i--){                    // items in the air
+    const f=S.flyers[i]; f.t+=dt;
+    if(f.t>=f.dur){ S.flyers.splice(i,1); if(f.on) f.on(); }
+  }
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){          // pop-in bounce
+    const it=S.g[r][c]; if(it && it.pop<1) it.pop=Math.min(1,it.pop+dt/0.28);
+  }
+  if(S.genCd>0) S.genCd=Math.max(0,S.genCd-dt);
+  if(S.shake>0) S.shake=Math.max(0,S.shake-dt*24);
+  if(S.tip>0 && (S.merges>0||S.taps>0)) S.tip=Math.max(0,S.tip-dt*1.8);
+  if(S.mode==='play' && S.time-S.lastInput>=CONFIG.idleHint) S.handPh+=dt;
+
+  if(S.drag && S.drag.auto){                                // the autopilot's hand carries an item
+    const d=S.drag; d.t+=dt;
+    const k=ease(clamp(d.t/CONFIG.autoDrag,0,1));
+    d.x=cellX(d.from[1])+(cellX(d.to[1])-cellX(d.from[1]))*k;
+    d.y=cellY(d.from[0])+(cellY(d.to[0])-cellY(d.from[0]))*k;
+    if(d.t>=CONFIG.autoDrag){ S.drag=null; dropAt(d,d.to); }
+  }
+
+  if(S.mode==='play' && S.lock===0 && !S.drag){
+    if(!deliverReady()){
+      // ad-safety 1: left alone, the ad plays itself to the end card
+      if(S.autoOn || S.time-S.lastInput>CONFIG.idleAuto){
+        S.autoOn=true;
+        if(S.time-S.lastAuto>CONFIG.autoStep){
+          const a=bestAction();
+          if(a && a.type==='gen'){ genTap(false); S.lastAuto=S.time; }
+          else if(a){
+            const it=at(a.from[0],a.from[1]);
+            if(it){
+              S.g[a.from[0]][a.from[1]]=null; S.chain=0;
+              S.drag={item:it,from:a.from,to:a.to,x:cellX(a.from[1]),y:cellY(a.from[0]),auto:true,t:0};
+              Sfx.lift();
+            }
+            S.lastAuto=S.time;
+          }
+        }
+      }
+      // ad-safety 2: however badly the counter is being played, a merge happens
+      else if(S.time-S.lastMerge>CONFIG.helpAfter){
+        const a=bestAction();
+        if(a && a.type==='merge'){
+          const it=at(a.from[0],a.from[1]);
+          if(it){
+            S.g[a.from[0]][a.from[1]]=null; S.chain=0; S.helps++;
+            toast('SOUS-CHEF HELPS!','help');
+            mergeInto(it,cellX(a.from[1]),cellY(a.from[0]),a.to);
+            S.lastMerge=S.time;
+          }
+        }
+      }
+    }
+  }
+  if(S.time>CONFIG.autoEnd && S.mode!=='end') showEnd();
+}
+
+/* =========================================================================
+   DRAWING
+   ========================================================================= */
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+const OUT='rgba(74,42,16,.55)';
+/** the pastry ladder. Five different SHAPES, so the tier never depends on hue. */
+function drawItem(x,y,t,s){
+  ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+  ctx.fillStyle='rgba(30,16,8,.28)'; ctx.beginPath(); ctx.ellipse(0,36,30,8,0,0,7); ctx.fill();
+  ctx.strokeStyle=OUT; ctx.lineWidth=2.5; ctx.lineJoin='round';
+  if(t===0){                                                   // dough ball
+    const g=ctx.createRadialGradient(-10,-13,4,0,0,36);
+    g.addColorStop(0,'#fffaf0'); g.addColorStop(1,'#e0c398');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,32,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.8)';
+    for(const p of [[-15,-9],[7,-17],[15,7],[-7,13]]){ ctx.beginPath(); ctx.arc(p[0],p[1],2.6,0,7); ctx.fill(); }
+  }else if(t===1){                                             // bun
+    const g=ctx.createLinearGradient(0,-32,0,30);
+    g.addColorStop(0,'#ffdb95'); g.addColorStop(0.5,'#edb257'); g.addColorStop(1,'#b0711c');
+    ctx.fillStyle=g; ctx.beginPath();
+    ctx.moveTo(-33,18); ctx.quadraticCurveTo(-35,-26,0,-29); ctx.quadraticCurveTo(35,-26,33,18);
+    ctx.quadraticCurveTo(0,33,-33,18); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle='rgba(255,244,214,.85)'; ctx.lineWidth=4.5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-15,-4); ctx.lineTo(13,-14); ctx.stroke();
+    ctx.fillStyle='rgba(90,54,18,.6)';
+    for(const p of [[-8,-18],[10,-8],[-2,6]]){ ctx.beginPath(); ctx.ellipse(p[0],p[1],3,2,0.5,0,7); ctx.fill(); }
+  }else if(t===2){                                             // croissant
+    const A0=Math.PI*1.10, A1=Math.PI*(-0.10);                 // one crescent, stroked in passes
+    ctx.lineCap='round';
+    ctx.strokeStyle=OUT; ctx.lineWidth=32;                     // outline
+    ctx.beginPath(); ctx.arc(0,9,25,A0,A1,false); ctx.stroke();
+    const g=ctx.createLinearGradient(0,-22,0,26);
+    g.addColorStop(0,'#ffd694'); g.addColorStop(0.5,'#e2953a'); g.addColorStop(1,'#a4610f');
+    ctx.strokeStyle=g; ctx.lineWidth=27;                       // body
+    ctx.beginPath(); ctx.arc(0,9,25,A0,A1,false); ctx.stroke();
+    ctx.strokeStyle='rgba(255,243,214,.40)'; ctx.lineWidth=6;  // glaze along the top of the tube
+    ctx.beginPath(); ctx.arc(0,3,25,A0+0.30,A1-0.30,false); ctx.stroke();
+    ctx.strokeStyle='rgba(120,66,12,.42)'; ctx.lineWidth=3;    // segment ridges
+    for(let i=1;i<=3;i++){
+      const a=A0+(A1-A0)*i/4, cx=Math.cos(a)*25, cy=Math.sin(a)*25+9;
+      ctx.beginPath();
+      ctx.moveTo(cx-Math.cos(a)*12, cy-Math.sin(a)*12);
+      ctx.lineTo(cx+Math.cos(a)*12, cy+Math.sin(a)*12);
+      ctx.stroke();
+    }
+  }else if(t===3){                                             // cupcake
+    ctx.fillStyle='#c9703f'; ctx.beginPath();
+    ctx.moveTo(-27,2); ctx.lineTo(27,2); ctx.lineTo(18,33); ctx.lineTo(-18,33); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle='rgba(0,0,0,.18)'; ctx.lineWidth=2.5;
+    for(const dx of [-13,0,13]){ ctx.beginPath(); ctx.moveTo(dx,3); ctx.lineTo(dx*0.66,32); ctx.stroke(); }
+    ctx.strokeStyle=OUT; ctx.lineWidth=2.5;
+    const f=ctx.createLinearGradient(0,-30,0,4);
+    f.addColorStop(0,'#ffe3ef'); f.addColorStop(1,'#ff8fbe');
+    ctx.fillStyle=f;
+    ctx.beginPath();
+    ctx.moveTo(-27,3); ctx.quadraticCurveTo(-30,-14,-11,-16); ctx.quadraticCurveTo(-9,-30,4,-27);
+    ctx.quadraticCurveTo(20,-30,20,-13); ctx.quadraticCurveTo(31,-11,27,3); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#e23b4e'; ctx.beginPath(); ctx.arc(4,-31,6.5,0,7); ctx.fill(); ctx.stroke();
+  }else{                                                       // cake
+    const g=ctx.createLinearGradient(0,-4,0,32);
+    g.addColorStop(0,'#fff4e2'); g.addColorStop(1,'#e7bc86');
+    ctx.fillStyle=g; roundRect(-32,-6,64,36,9); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#d2544f'; ctx.fillRect(-32,12,64,7);
+    ctx.fillStyle='#fff8ec';                                    // frosting top with drips
+    ctx.beginPath();
+    ctx.moveTo(-33,-4);
+    ctx.quadraticCurveTo(-33,-18,0,-18); ctx.quadraticCurveTo(33,-18,33,-4);
+    ctx.quadraticCurveTo(26,4,20,-3); ctx.quadraticCurveTo(13,6,6,-3);
+    ctx.quadraticCurveTo(-1,7,-9,-3); ctx.quadraticCurveTo(-17,5,-24,-3);
+    ctx.quadraticCurveTo(-29,2,-33,-4); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle='#f0a53c'; ctx.lineWidth=3.5;               // candle
+    ctx.beginPath(); ctx.moveTo(0,-19); ctx.lineTo(0,-31); ctx.stroke();
+    ctx.fillStyle='#ffd23f'; ctx.beginPath(); ctx.ellipse(0,-36,5,7,0,0,7); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,vh);
+  g.addColorStop(0,'#3d2414'); g.addColorStop(0.5,'#241509'); g.addColorStop(1,'#120a05');
+  ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+  ctx.save(); ctx.translate(ox,oy); ctx.scale(scale,scale);     // warm pool behind the counter
+  const r=ctx.createRadialGradient(360,BY+BH/2,60,360,BY+BH/2,470);
+  r.addColorStop(0,'rgba(255,178,84,.15)'); r.addColorStop(1,'rgba(255,178,84,0)');
+  ctx.fillStyle=r; ctx.fillRect(-200,0,SW+400,SH);
+  ctx.restore();
+}
+/** the paper order ticket: the same vector pastry the counter uses, so what is
+    wanted and what is on the board can never look like two different things */
+function drawTicket(){
+  const w=470,h=96,x=TX-w/2,y=TY-h/2;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.35)'; roundRect(x+4,y+6,w,h,10); ctx.fill();
+  const g=ctx.createLinearGradient(0,y,0,y+h);
+  g.addColorStop(0,'#fdf3e0'); g.addColorStop(1,'#e8d6ba');
+  ctx.fillStyle=g; roundRect(x,y,w,h,10); ctx.fill();
+  ctx.fillStyle='#c9563f'; roundRect(x,y,w,7,3); ctx.fill();
+  ctx.fillStyle='#8a6a48'; ctx.font='700 15px system-ui'; ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText('ORDER '+Math.min(S.oi+1,ORDERS.length)+' / '+ORDERS.length, x+18, y+30);
+  ctx.fillStyle='#3d2a17'; ctx.font='900 21px system-ui';
+  ctx.fillText(TIERS[order().t].name.toUpperCase(), x+18, y+58);
+  drawItem(x+w-64, y+h/2, order().t, 0.62);
+  for(let i=0;i<order().n;i++){                                 // one pip per unit ordered
+    const px=TX+(i-(order().n-1)/2)*64+34, py=y+h/2;
+    ctx.beginPath(); ctx.arc(px,py,17,0,7);
+    ctx.fillStyle= i<S.done ? '#3fbf6a' : 'rgba(0,0,0,.10)'; ctx.fill();
+    ctx.strokeStyle='rgba(61,42,23,.35)'; ctx.lineWidth=2; ctx.stroke();
+    if(i<S.done){ ctx.strokeStyle='#fff'; ctx.lineWidth=3.5; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(px-6,py); ctx.lineTo(px-1,py+5); ctx.lineTo(px+7,py-6); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+/** dark wood, deliberately: the pastries are cream, amber and pink, and on a
+    cream counter the first two tiers vanished into the board */
+function drawCounter(){
+  ctx.fillStyle='rgba(0,0,0,.45)'; roundRect(BX-12,BY-8,BW+24,BH+26,22); ctx.fill();
+  const g=ctx.createLinearGradient(0,BY,0,BY+BH);
+  g.addColorStop(0,'#8a5730'); g.addColorStop(1,'#5c3719');
+  ctx.fillStyle=g; roundRect(BX-4,BY-4,BW+8,BH+8,18); ctx.fill();
+  ctx.strokeStyle='rgba(255,214,150,.30)'; ctx.lineWidth=3;
+  roundRect(BX-4,BY-4,BW+8,BH+8,18); ctx.stroke();
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){              // recessed trays
+    ctx.fillStyle='rgba(0,0,0,.22)';
+    roundRect(BX+c*CELL+7,BY+r*CELL+7,CELL-14,CELL-14,14); ctx.fill();
+    ctx.strokeStyle='rgba(255,222,175,.13)'; ctx.lineWidth=1.5;
+    roundRect(BX+c*CELL+7,BY+r*CELL+7,CELL-14,CELL-14,14); ctx.stroke();
+  }
+}
+function drawGrid(){
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const it=S.g[r][c]; if(!it || it.fly) continue;
+    const sc=1+0.34*Math.sin(Math.PI*clamp(it.pop,0,1))*(it.pop<1?1:0);
+    drawItem(cellX(c),cellY(r),it.t,0.92*sc);
+  }
+}
+function drawFlyers(){
+  for(const f of S.flyers){
+    const k=ease(clamp(f.t/f.dur,0,1));
+    const x=f.x0+(f.x1-f.x0)*k, y=f.y0+(f.y1-f.y0)*k-Math.sin(Math.PI*k)*46;
+    drawItem(x,y,f.tier,0.92);
+  }
+}
+/** valid drop targets ring up while something is in hand */
+function drawTargets(){
+  if(!S.drag) return;
+  const t=S.drag.item.t, k=(Math.sin(S.time*7)+1)/2;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const it=at(r,c); if(!it || it.t!==t) continue;
+    ctx.strokeStyle='rgba(255,204,102,'+(0.55+0.35*k)+')'; ctx.lineWidth=5;
+    roundRect(BX+c*CELL+8,BY+r*CELL+8,CELL-16,CELL-16,15); ctx.stroke();
+  }
+}
+function drawDrag(){
+  if(!S.drag) return;
+  const d=S.drag;
+  ctx.save(); ctx.globalAlpha=0.95;
+  drawItem(d.x,d.y-14,d.item.t,1.12);
+  ctx.restore();
+}
+function drawGen(){
+  const ready=S.genCd<=0 && S.mode==='play';
+  const k=(Math.sin(S.time*3.4)+1)/2;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(GX,GY+52,72,15,0,0,7); ctx.fill();
+  const g=ctx.createLinearGradient(0,GY-64,0,GY+52);
+  g.addColorStop(0,'#7b4b23'); g.addColorStop(1,'#3d2413');
+  ctx.fillStyle=g; roundRect(GX-78,GY-46,156,96,20); ctx.fill();
+  ctx.strokeStyle='rgba(255,214,150,.45)'; ctx.lineWidth=3; roundRect(GX-78,GY-46,156,96,20); ctx.stroke();
+  ctx.fillStyle='rgba(0,0,0,.35)'; roundRect(GX-58,GY-30,116,54,14); ctx.fill();   // oven mouth
+  if(ready){
+    ctx.strokeStyle='rgba(255,204,102,'+(0.35+0.45*k)+')'; ctx.lineWidth=5;
+    roundRect(GX-84-k*5,GY-52-k*5,168+k*10,108+k*10,25); ctx.stroke();
+  }
+  drawItem(GX,GY-6,genTier(),0.62);
+  if(!ready){                                                    // cooldown sweep
+    ctx.strokeStyle='rgba(255,204,102,.35)'; ctx.lineWidth=7;
+    roundRect(GX-84,GY-52,168,108,25); ctx.stroke();
+    ctx.strokeStyle='rgba(255,204,102,.95)'; ctx.lineWidth=7; ctx.lineCap='round';
+    const p=1-S.genCd/CONFIG.genCool;
+    ctx.beginPath(); ctx.moveTo(GX-84+34,GY+56); ctx.lineTo(GX-84+34+100*p,GY+56); ctx.stroke();
+  }
+  ctx.fillStyle=ready?'#ffcc66':'rgba(255,204,102,.4)';
+  ctx.font='900 17px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('TAP TO BAKE',GX,GY+86);
+  ctx.restore();
+}
+function drawHint(){
+  if(S.mode!=='play' || S.time-S.lastInput<CONFIG.idleHint || S.drag) return;
+  const a=bestAction(); if(!a) return;
+  const k=(Math.sin(S.handPh*3.0)+1)/2;
+  ctx.save();
+  if(a.type==='gen'){
+    ctx.translate(GX+26,GY+18+k*12);
+  }else{
+    ctx.strokeStyle='rgba(255,255,255,'+(0.30+0.35*(1-k))+')'; ctx.lineWidth=4;
+    for(const cl of [a.from,a.to]) { roundRect(BX+cl[1]*CELL+9,BY+cl[0]*CELL+9,CELL-18,CELL-18,15); ctx.stroke(); }
+    const x=cellX(a.from[1])+(cellX(a.to[1])-cellX(a.from[1]))*k;
+    const y=cellY(a.from[0])+(cellY(a.to[0])-cellY(a.from[0]))*k;
+    ctx.translate(x+24,y+34);
+  }
+  ctx.font='52px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=10;
+  ctx.fillText('👆',0,0);
+  ctx.restore();
+}
+function drawParts(){
+  for(const p of S.parts){
+    const a=1-p.age/p.life;
+    ctx.globalAlpha=a; ctx.fillStyle=p.color;
+    if(p.kind==='conf'){ ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r); ctx.restore(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+function drawFloats(){
+  for(const f of S.floats){
+    const a=1-f.age/f.life;
+    ctx.globalAlpha=a; ctx.fillStyle=f.color;
+    ctx.font='900 '+f.size+'px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle='rgba(0,0,0,.45)'; ctx.lineWidth=5;
+    ctx.strokeText(f.txt,f.x,f.y); ctx.fillText(f.txt,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+function drawTip(){
+  if(S.tip<=0) return;
+  ctx.save(); ctx.globalAlpha=S.tip*0.9;
+  ctx.fillStyle='#e5cba6'; ctx.font='700 22px system-ui'; ctx.textAlign='center';
+  ctx.fillText('DRAG A PASTRY ONTO ITS TWIN', 360, BY+BH+38);
+  ctx.restore();
+}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);                 // draw in CSS px, sharp on retina
+  drawBG();
+  const sh=S.shake, shx=sh?rnd(-sh,sh)*scale:0, shy=sh?rnd(-sh,sh)*scale:0;
+  ctx.save(); ctx.translate(ox+shx,oy+shy); ctx.scale(scale,scale);
+  drawTicket();
+  drawCounter();
+  drawTargets();
+  drawGrid();
+  drawTip();
+  drawGen();
+  drawFlyers();
+  drawDrag();
+  drawHint();
+  drawParts();
+  drawFloats();
+  ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt);
+  draw();
+}
+
+/* MRAID-aware start */
+function start(){ newGame(); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* =========================================================================
+   DEBUG HOOKS — headless stepping and verification.
+   solve() and stress() drive the REAL pipeline (same merge, delivery and
+   safety-net code the player hits), so they cannot pass while the game fails.
+   Both leave the live state where they finished — call newGame() after.
+   ========================================================================= */
+window.__game={ S, CONFIG, ORDERS, TIERS, SEED, newGame, end:showEnd, best:bestAction, gen:genTap,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); draw(); },
+  grid:()=>S.g.map(row=>row.map(it=>it?(it.fly?'*':String(it.t+1)):'.').join('')),
+  merge:(from,to)=>{ const it=at(from[0],from[1]); if(!it) return false;
+    S.g[from[0]][from[1]]=null; S.chain=0; mergeInto(it,cellX(from[1]),cellY(from[0]),to); return true; },
+  /** the seed and the orders as authored: item counts, and the base-item cost
+      of each order against what its generator tier actually supplies */
+  audit:()=>{
+    const g=seedGrid(); const have=[0,0,0,0,0]; let n=0;
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ const it=g[r][c]; if(it){ have[it.t]++; n++; } }
+    let adj=0;
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+      const it=g[r][c]; if(!it) continue;
+      for(const d of [[1,0],[0,1]]){ const o=inB(r+d[0],c+d[1])&&g[r+d[0]][c+d[1]];
+        if(o && o.t===it.t) adj++; }
+    }
+    const unit=t=>Math.pow(2,t);
+    return { cells:ROWS*COLS, seeded:n, byTier:have, seedUnits:have.reduce((s,v,i)=>s+v*unit(i),0),
+      adjacentTwinsInSeed:adj,
+      orders:ORDERS.map((o,i)=>({order:i+1, want:TIERS[o.t].name, count:o.n,
+        costUnits:o.n*unit(o.t), generatorMakes:TIERS[o.gen].name,
+        tapsIfNothingOnCounter:o.n*unit(o.t)/unit(o.gen)})) };
+  },
+  /** untouched impression: let the autopilot run the whole ad */
+  solve:(maxSec=120,dt=1/30)=>{
+    newGame(); S.lastInput=-999; S.autoOn=true;
+    const marks=[]; let oi=-1;
+    for(let i=0;i<maxSec/dt && S.mode!=='end'; i++){
+      update(dt);
+      if(S.oi!==oi){ oi=S.oi; marks.push(`t=${S.time.toFixed(1)} order ${Math.min(oi+1,ORDERS.length)}`); }
+    }
+    return { finished:S.mode==='end', t:+S.time.toFixed(1), orders:S.oi, coins:S.coins,
+             merges:S.merges, taps:S.taps, helps:S.helps, junk:S.junk, bestChain:S.bestChain, marks };
+  },
+  /** a deliberately bad player: random drags and random generator taps, never
+      idle long enough for the autopilot. Deterministic LCG so a bad trial can
+      be replayed. This is what proves the sous-chef rescue actually rescues. */
+  stress:(trials=60,maxSec=150,seed=12345,dt=1/30)=>{
+    let z=seed>>>0; const rand=()=>{ z=(z*1664525+1013904223)>>>0; return z/4294967296; };
+    let ok=0, sum=0, worst=0, helps=0;
+    for(let n=0;n<trials;n++){
+      newGame();
+      let acc=0;
+      for(let i=0;i<maxSec/dt && S.mode!=='end'; i++){
+        update(dt);
+        S.lastInput=S.time;                       // an ACTIVE player: autopilot never engages
+        acc+=dt;
+        if(acc>=0.45){                            // ~2 clumsy actions a second
+          acc=0;
+          if(rand()<0.4) genTap(true);
+          else{
+            const fr=[Math.floor(rand()*ROWS),Math.floor(rand()*COLS)];
+            const to=[Math.floor(rand()*ROWS),Math.floor(rand()*COLS)];
+            const it=at(fr[0],fr[1]);
+            if(it && S.lock===0){ S.g[fr[0]][fr[1]]=null; S.chain=0;
+              dropAt({item:it,from:fr,x:cellX(to[1]),y:cellY(to[0])},to); }
+          }
+        }
+      }
+      if(S.mode==='end' && S.oi>=ORDERS.length){ ok++; sum+=S.time; worst=Math.max(worst,S.time); helps+=S.helps; }
+    }
+    return { trials, completed:ok, rate:+(ok/trials).toFixed(3), avgSec:+(sum/Math.max(ok,1)).toFixed(1),
+             worstSec:+worst.toFixed(1), avgSousChefRescues:+(helps/Math.max(ok,1)).toFixed(2) };
+  },
+};
+</script>
+</body>
+</html>

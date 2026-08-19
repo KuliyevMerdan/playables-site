@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Tap Eats — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#14100e; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(25px,5.7vw); font-weight:900; letter-spacing:2px; color:#ff7a45;
+    text-shadow:0 2px 0 #7a2c0c, 0 4px 12px rgba(0,0,0,.6); }
+  #sub { margin-top:3px; font-size:12px; font-weight:800; letter-spacing:3px; color:#9a8b80; }
+
+  @media (orientation:portrait) and (max-height:620px){
+    #title { font-size:min(19px,5.2vw); letter-spacing:1px; }
+    #sub { font-size:10px; letter-spacing:2px; }
+  }
+  @media (orientation:landscape) and (max-height:520px){
+    #hdr { top:calc(4px + env(safe-area-inset-top)); }
+    #title { font-size:19px; letter-spacing:1px; }
+    #sub { font-size:10px; display:inline-block; margin-left:9px; }
+  }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- Toast ---------- */
+  #toast { position:absolute; top:14%; left:0; right:0; text-align:center; font-size:min(32px,7.4vw); font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.6);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#8affc1; } #toast.info { color:#ffd98a; }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    background:radial-gradient(ellipse at 50% 30%, #40251a 0%, #140d09 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:92px; height:92px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:50px; background:linear-gradient(160deg,#ffc59a,#ff7a45); box-shadow:0 10px 30px rgba(0,0,0,.55), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:min(29px,6.8vw); font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.45); }
+  /* the receipt: the end card shows the order the user actually built */
+  #receipt { width:min(360px,80vw); background:#fdf6ec; border-radius:14px; padding:16px 18px; color:#3a2a1c;
+    box-shadow:0 10px 26px rgba(0,0,0,.5); font-size:15px; }
+  #receipt .row { display:flex; justify-content:space-between; padding:3px 0; }
+  #receipt .row.x { color:#8a7563; font-size:13px; }
+  #receipt .tot { border-top:2px dashed #d7c3aa; margin-top:8px; padding-top:8px; font-weight:900; font-size:17px; }
+  #end p  { color:#b39c8b; font-size:15px; text-align:center; padding:0 34px; line-height:1.35; }
+  #cta { margin-top:2px; padding:17px 60px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#8a7565; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="hdr"><div id="title">TAP EATS</div><div id="sub">DINNER IN 3 TAPS</div></div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="end">
+  <div class="icon">🛵</div>
+  <h1>Delivered in 12 min</h1>
+  <div id="receipt"></div>
+  <p id="endNote">Your first delivery is on us.</p>
+  <button class="btn" id="cta">ORDER IN APP</button>
+  <button class="btn" id="replay">↺ Watch again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   TAP EATS — self-contained playable ad (non-game brand playable)
+   Scene designed in 720x1280 virtual units, letterbox-scaled to viewport.
+   All timing runs on sim time (S.time) so the whole flow is headless-steppable
+   through window.__game.tick().
+
+   This is a SERVICE-APP FLOW demo, not a configurator: four screens — pick a
+   dish, add extras, checkout, watch the courier — ending on a receipt of the
+   order the viewer actually built. The sibling brand playable
+   (../sneaker-studio) is the configurator pattern with DOM controls; this one
+   draws its whole UI on canvas and hit-tests it, because a flow demo has to
+   prove every screen is reachable and that is only testable if the layout,
+   the renderer and the input all read the same rectangles.
+   ========================================================================= */
+
+/* =========================================================================
+   CAMPAIGN — everything an advertiser owns. This is NOT just the store URL:
+   prices, ratings, times, the delivery fee and both promotional lines are
+   advertising claims, and unlike a placeholder URL they fail silently — a
+   wrong "FREE delivery" ships, runs, and becomes the advertiser's problem.
+   Replace the whole block per campaign; __game.audit() lists every field
+   still holding its shipped default under `campaignPlaceholders`, which must
+   be [] before a campaign goes live.
+   ========================================================================= */
+const CAMPAIGN = {
+  storeURL:'https://apps.apple.com/app/id000000000',
+  brand:'TAP EATS',
+  tagline:'DINNER IN 3 TAPS',
+  addressLabel:'Home',
+  addressLine:'12 Harbour St · Apt 4',
+  dishes:[
+    {name:'Smash Burger',      price:990,  kind:'burger', tag:'4.9 ★ · 15 min'},
+    {name:'Margherita Pizza',  price:1150, kind:'pizza',  tag:'4.8 ★ · 20 min'},
+    {name:'Rainbow Poke Bowl', price:1220, kind:'bowl',   tag:'4.9 ★ · 18 min'},
+  ],
+  extras:[
+    {name:'Skin-on fries', price:250, kind:'fries'},
+    {name:'Iced cola',     price:160, kind:'cup'},
+    {name:'Garlic dip',    price:90,  kind:'dip'},
+    {name:'Choc cookie',   price:180, kind:'cookie'},
+  ],
+  deliveryFee:'FREE',
+  promoFooter:'🎉  FREE delivery on your first order',
+  courierName:'Ana · your courier',
+  courierStats:'4.9 ★ · 320 deliveries',
+  etaMinutes:12,
+  endTitle:'Delivered in 12 min',
+  endNote:'Your first delivery is on us.',
+  ctaLabel:'ORDER IN APP',
+};
+/** snapshot taken before anything can touch it — the audit diffs against this */
+const CAMPAIGN_SHIPPED = JSON.stringify(CAMPAIGN);
+
+const CONFIG = {
+  storeURL:CAMPAIGN.storeURL,                        // kept for parity with siblings
+  stepT:0.34,            // s screen slide
+  trackT:7.5,            // s the delivery run takes
+  idleHint:2.6,          // s idle -> hand on the next control
+  idleAuto:6.0,          // s idle -> the ad taps through itself
+  autoStep:1.05,         // s between autopilot taps
+  helpAfter:9.0,         // s stuck on one screen -> the flow advances itself
+  deliverPause:1.6,      // s on DELIVERED before the end card
+  autoEnd:95,            // s -> force end card
+};
+
+/* ---------- tiny helpers ---------- */
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const rnd   = (a,b)=>a+Math.random()*(b-a);
+const ease  = t=>t*t*(3-2*t);
+const $ = id=>document.getElementById(id);
+const vibe = p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+/** money is cents everywhere; a brand creative showing a wrong total is not a
+    cosmetic bug, so nothing here ever touches a float */
+const fmt = c=>'$'+(c/100).toFixed(2);
+
+/* =========================================================================
+   AUDIO — synthesized, no assets
+   ========================================================================= */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  tap(){  this.tone(520,380,0.06,'sine',0.06); },
+  on(){   this.tone(660,990,0.09,'triangle',0.09); },
+  off(){  this.tone(520,330,0.08,'triangle',0.06); },
+  step(){ [587,880].forEach((f,i)=>this.tone(f,f,0.10,'triangle',0.09,i*0.06)); },
+  order(){ [523,659,784,1047].forEach((f,i)=>this.tone(f,f,0.16,'triangle',0.14,i*0.07)); },
+  scoot(){ this.tone(120,150,0.5,'sawtooth',0.035); },
+  bell(){ [1319,1568].forEach((f,i)=>this.tone(f,f,0.22,'sine',0.13,i*0.10)); },
+  win(){  [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.20,'triangle',0.17,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* =========================================================================
+   CTA / MRAID
+   ========================================================================= */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{ $('end').classList.remove('show'); newRun(); });
+
+/* =========================================================================
+   RENDER SETUP — 720x1280 scene, letterboxed.
+   Unlike sneaker-studio (which renders in viewport pixels because nothing on
+   its canvas is hit-tested), every control here lives on the canvas, so the
+   scene has to be a fixed coordinate system.
+   ========================================================================= */
+const cv=$('game'), ctx=cv.getContext('2d');
+const SW=720, SH=1280;
+let vw=0, vh=0, dpr=1, scale=1, ox=0, oy=0;
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';   // fixed inset:0 alone won't size a canvas
+  scale=Math.min(vw/SW,vh/SH); ox=(vw-SW*scale)/2; oy=(vh-SH*scale)/2;
+}
+addEventListener('resize',resize); resize();
+const toScene = (px,py)=>[(px-ox)/scale, (py-oy)/scale];
+
+/* =========================================================================
+   THE APP
+   ========================================================================= */
+const PANEL={x:40, y:232, w:640, h:968};          // the phone screen the flow lives in
+const DISHES=CAMPAIGN.dishes, EXTRAS=CAMPAIGN.extras;
+const STEPS=['PICK','EXTRAS','PAY','TRACK'];
+const ADDRESS={label:CAMPAIGN.addressLabel, line:CAMPAIGN.addressLine};
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const S = {
+  step:0, time:0, mode:'run',       // run | end
+  dish:-1, extras:{}, slide:0,
+  track:0, delivered:false,
+  taps:0, chipTaps:0, autos:0, helps:0,
+  lastInput:0, lastStep:0, lastAuto:0, autoOn:false, handPh:0,
+  parts:[], floats:[], timers:[], press:null, shake:0,
+};
+function later(sec,fn){ S.timers.push({t:S.time+sec,fn}); }
+function newRun(){
+  S.step=0; S.time=0; S.mode='run'; S.dish=-1; S.extras={}; S.slide=0;
+  S.track=0; S.delivered=false; S.taps=0; S.chipTaps=0; S.autos=0; S.helps=0;
+  S.lastInput=0; S.lastStep=0; S.lastAuto=0; S.autoOn=false; S.handPh=0;
+  S.parts=[]; S.floats=[]; S.timers=[]; S.press=null; S.shake=0;
+  $('end').classList.remove('show');
+}
+const dish = ()=>S.dish>=0?DISHES[S.dish]:null;
+const extrasList = ()=>EXTRAS.filter((e,i)=>S.extras[i]);
+/** the only place a total is computed — end card, checkout and audit all use it */
+function total(){
+  let c = dish()?dish().price:0;
+  for(const e of extrasList()) c+=e.price;
+  return c;
+}
+
+/* =========================================================================
+   LAYOUT — one function returns every tappable rectangle for a screen.
+   draw(), the hit test, the tutorial hand and audit() all read THIS, so a
+   control cannot be drawn somewhere the player is unable to tap, and the
+   audit can prove it for every screen without running the ad.
+   ========================================================================= */
+function layout(step){
+  const R=[], PX=PANEL.x+30, PW=PANEL.w-60;
+  if(step===0){
+    for(let i=0;i<DISHES.length;i++)
+      R.push({id:'dish'+i, kind:'dishcard', i, x:PX, y:404+i*196, w:PW, h:186});
+  }else if(step===1){
+    for(let i=0;i<EXTRAS.length;i++){
+      const c=i%2, r=(i/2)|0;
+      R.push({id:'extra'+i, kind:'chip', i, x:PX+c*(PW/2+8), y:742+r*104, w:PW/2-8, h:92});
+    }
+    R.push({id:'next', kind:'primary', label:'CONTINUE', x:PX, y:1064, w:PW, h:94});
+  }else if(step===2){
+    R.push({id:'addr', kind:'addr', x:PX, y:836, w:PW, h:104});
+    R.push({id:'pay',  kind:'primary', label:'PLACE ORDER', x:PX, y:1064, w:PW, h:94});
+  }
+  return R;
+}
+const hitAt=(x,y)=>layout(S.step).find(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||null;
+
+/* =========================================================================
+   ACTIONS
+   ========================================================================= */
+function go(step){
+  S.step=step; S.slide=0; S.lastStep=S.time; S.lastAuto=S.time;
+  if(step===3){ Sfx.scoot(); toast('ORDER PLACED','good'); }
+}
+function act(r,byUser){
+  if(!r || S.mode!=='run') return false;
+  if(byUser!==false){ S.lastInput=S.time; S.handPh=0; }
+  S.taps++;
+  if(r.kind==='dishcard'){
+    S.dish=r.i; Sfx.step(); vibe(12);
+    burst(r.x+110, r.y+r.h/2, '#ff9c5c', 14);
+    go(1); return true;
+  }
+  if(r.kind==='chip'){
+    const on=!S.extras[r.i]; S.extras[r.i]=on; S.chipTaps++; S.lastStep=S.time;
+    on?Sfx.on():Sfx.off(); vibe(8);
+    S.floats.push({x:r.x+r.w/2, y:r.y+18, txt:(on?'+':'−')+fmt(EXTRAS[r.i].price).slice(1),
+                   size:26, color:on?'#8affc1':'#ffb3a0', age:0, life:0.8});
+    if(on) burst(r.x+r.w-34, r.y+r.h/2, '#8affc1', 8);
+    return true;
+  }
+  if(r.kind==='addr'){ Sfx.tap(); vibe(6); return true; }        // decorative: no data entry, that is the pitch
+  if(r.id==='next'){ Sfx.step(); vibe(10); go(2); return true; }
+  if(r.id==='pay'){
+    Sfx.order(); vibe([20,40,20]); confetti(SW/2, 780); S.shake=Math.max(S.shake,5);
+    go(3); return true;
+  }
+  return false;
+}
+/** what the ad taps next; the tutorial hand points at the same rect */
+function nextAction(){
+  const R=layout(S.step);
+  if(S.step===0) return R[0];
+  if(S.step===1){
+    for(const i of [0,1]) if(!S.extras[i]) return R.find(r=>r.id==='extra'+i);
+    return R.find(r=>r.id==='next');
+  }
+  if(S.step===2) return R.find(r=>r.id==='pay');
+  return null;
+}
+/** the control that actually moves the flow on — what the stuck-help uses, so
+    a rescue can never spend itself toggling a chip */
+function advanceControl(){
+  const R=layout(S.step);
+  if(S.step===0) return R[0];
+  if(S.step===1) return R.find(r=>r.id==='next');
+  if(S.step===2) return R.find(r=>r.id==='pay');
+  return null;
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+function pointerDown(e){
+  Sfx.ensure(); S.lastInput=S.time; S.handPh=0; S.autoOn=false;
+  if(S.mode!=='run') return;
+  const p=toScene(e.clientX,e.clientY);
+  const r=hitAt(p[0],p[1]);
+  S.press=r?r.id:null;
+}
+function pointerUp(e){
+  if(S.mode!=='run'){ S.press=null; return; }
+  const p=toScene(e.clientX,e.clientY), r=hitAt(p[0],p[1]);
+  if(r && S.press===r.id) act(r,true);
+  S.press=null; S.lastInput=S.time;
+}
+cv.addEventListener('pointerdown',pointerDown);
+addEventListener('pointerup',pointerUp);          // on window: the HUD buttons are
+addEventListener('pointercancel',()=>{ S.press=null; });   // pointer-events:auto
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would break the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* =========================================================================
+   PARTICLES / FLOATS
+   ========================================================================= */
+function burst(x,y,color,n){
+  for(let i=0;i<n;i++) S.parts.push({x,y,vx:rnd(-200,200),vy:rnd(-250,70),
+    life:rnd(.30,.60),age:0,color,r:rnd(2.5,5.5),grav:900,kind:'dot'});
+}
+function confetti(x,y){
+  const cols=['#ff7a45','#42d76c','#ffd98a','#7ee0ff','#ff9ec4'];
+  for(let i=0;i<90;i++) S.parts.push({x:x+rnd(-90,90),y,vx:rnd(-400,400),vy:rnd(-760,-250),
+    life:rnd(.9,1.7),age:0,color:cols[i%cols.length],r:rnd(3,6),grav:980,rot:rnd(0,7),vr:rnd(-9,9),kind:'conf'});
+}
+function updateParts(dt){
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt;
+    if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+    if(p.rot!==undefined) p.rot+=p.vr*dt;
+  }
+  for(let i=S.floats.length-1;i>=0;i--){
+    const f=S.floats[i]; f.age+=dt; f.y-=48*dt;
+    if(f.age>f.life) S.floats.splice(i,1);
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  later(1.3,()=>t.classList.remove('show'));
+}
+function showEnd(){
+  S.mode='end';
+  const d=dish();
+  const rows=[];
+  if(d) rows.push(`<div class="row"><span>${d.name}</span><span>${fmt(d.price)}</span></div>`);
+  for(const e of extrasList()) rows.push(`<div class="row x"><span>+ ${e.name}</span><span>${fmt(e.price)}</span></div>`);
+  rows.push(`<div class="row tot"><span>Total</span><span>${fmt(total())}</span></div>`);
+  $('receipt').innerHTML=rows.join('');
+  $('end').querySelector('h1').textContent = S.delivered ? CAMPAIGN.endTitle : 'Hungry yet?';
+  $('end').classList.add('show');
+  Sfx.win();
+}
+
+/* =========================================================================
+   UPDATE — everything on sim time
+   ========================================================================= */
+function update(dt){
+  S.time+=dt;
+  for(let i=S.timers.length-1;i>=0;i--){
+    if(S.time>=S.timers[i].t){ const fn=S.timers[i].fn; S.timers.splice(i,1); fn(); }
+  }
+  updateParts(dt);
+  if(S.slide<1) S.slide=Math.min(1,S.slide+dt/CONFIG.stepT);
+  if(S.shake>0) S.shake=Math.max(0,S.shake-dt*24);
+  if(S.mode==='run' && S.time-S.lastInput>=CONFIG.idleHint) S.handPh+=dt;
+
+  if(S.step===3 && S.mode==='run'){                        // the delivery run
+    if(S.track<1){
+      S.track=Math.min(1,S.track+dt/CONFIG.trackT);
+      if(S.track>=1 && !S.delivered){
+        S.delivered=true; Sfx.bell(); vibe([25,40,25]);
+        toast('DELIVERED!','good'); confetti(SW/2,700);
+        later(CONFIG.deliverPause,showEnd);
+      }
+    }
+  }else if(S.mode==='run'){
+    // ad-safety 1: left alone, the ad taps through the flow itself
+    if(S.autoOn || S.time-S.lastInput>CONFIG.idleAuto){
+      S.autoOn=true;
+      if(S.time-S.lastAuto>CONFIG.autoStep){
+        S.lastAuto=S.time; const r=nextAction();
+        if(r){ S.autos++; act(r,false); }
+      }
+    }
+    // ad-safety 2: however the screen is being poked, the flow moves on
+    else if(S.time-S.lastStep>CONFIG.helpAfter){
+      const r=advanceControl();
+      if(r){ S.helps++; toast('SKIPPING AHEAD','info'); act(r,false); }
+    }
+  }
+  if(S.time>CONFIG.autoEnd && S.mode!=='end') showEnd();
+}
+
+/* =========================================================================
+   DRAWING
+   ========================================================================= */
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function txt(s,x,y,font,color,align){
+  ctx.font=font; ctx.fillStyle=color; ctx.textAlign=align||'left'; ctx.textBaseline='middle';
+  ctx.fillText(s,x,y);
+}
+const INK='#2b1d14', DIM='#8a7565';
+
+/* ---------- food, all vector ---------- */
+function drawDish(kind,x,y,s){
+  ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+  ctx.strokeStyle='rgba(60,36,18,.55)'; ctx.lineWidth=2.5; ctx.lineJoin='round';
+  ctx.fillStyle='rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(0,44,46,10,0,0,7); ctx.fill();
+  if(kind==='burger'){
+    ctx.fillStyle='#c98a3f'; roundRect(-44,20,88,18,8); ctx.fill(); ctx.stroke();       // base bun
+    ctx.fillStyle='#5f3a20'; roundRect(-46,4,92,18,7); ctx.fill(); ctx.stroke();        // patty
+    ctx.fillStyle='#ffd257'; ctx.beginPath();                                            // cheese
+    ctx.moveTo(-44,4); ctx.lineTo(44,4); ctx.lineTo(36,16); ctx.lineTo(20,4);
+    ctx.lineTo(4,16); ctx.lineTo(-12,4); ctx.lineTo(-28,16); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#6cc24a'; ctx.beginPath();                                            // lettuce
+    ctx.moveTo(-46,2); for(let i=0;i<6;i++) ctx.quadraticCurveTo(-46+i*16+8,-10,-46+(i+1)*16,2);
+    ctx.lineTo(46,2); ctx.lineTo(46,-4); ctx.lineTo(-46,-4); ctx.closePath(); ctx.fill(); ctx.stroke();
+    const g=ctx.createLinearGradient(0,-40,0,-4);
+    g.addColorStop(0,'#f0b357'); g.addColorStop(1,'#cf8c33');
+    ctx.fillStyle=g; ctx.beginPath();                                                    // top bun
+    ctx.moveTo(-44,-4); ctx.quadraticCurveTo(-44,-42,0,-42); ctx.quadraticCurveTo(44,-42,44,-4);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(255,240,205,.9)';
+    for(const p of [[-22,-24],[0,-32],[20,-22],[-8,-16],[12,-14]]){
+      ctx.beginPath(); ctx.ellipse(p[0],p[1],4,2.6,0.5,0,7); ctx.fill(); }
+  }else if(kind==='pizza'){
+    ctx.fillStyle='#e8bd72'; ctx.beginPath();                                            // crust wedge
+    ctx.moveTo(0,40); ctx.lineTo(-46,-30); ctx.quadraticCurveTo(0,-48,46,-30); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#f2d9a0'; ctx.beginPath();
+    ctx.moveTo(0,34); ctx.lineTo(-38,-24); ctx.quadraticCurveTo(0,-38,38,-24); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#e35b3f';                                                             // pepperoni
+    for(const p of [[-16,-8],[14,-10],[0,10],[-6,-22],[22,4]]){
+      ctx.beginPath(); ctx.arc(p[0],p[1],7,0,7); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle='#5aa844';
+    for(const p of [[8,-20],[-22,6]]){ ctx.beginPath(); ctx.ellipse(p[0],p[1],6,3.4,0.7,0,7); ctx.fill(); }
+  }else{
+    ctx.fillStyle='#f6ead3'; ctx.beginPath(); ctx.arc(0,-4,38,Math.PI,0); ctx.fill();     // rice
+    const g=ctx.createLinearGradient(0,-6,0,40);
+    g.addColorStop(0,'#2f6f8f'); g.addColorStop(1,'#17394d');
+    ctx.fillStyle=g; ctx.beginPath();                                                    // bowl
+    ctx.moveTo(-46,-6); ctx.quadraticCurveTo(-40,40,0,40); ctx.quadraticCurveTo(40,40,46,-6);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#ff8b5e';                                                             // salmon
+    for(const p of [[-20,-16],[-4,-24],[12,-14]]){ roundRect(p[0]-9,p[1]-8,18,16,4); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle='#7bc47f'; ctx.beginPath(); ctx.ellipse(26,-14,11,8,0.3,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#3f7d3f';
+    for(const p of [[-30,-8],[4,-6],[20,-4]]){ ctx.beginPath(); ctx.ellipse(p[0],p[1],5,3,0.4,0,7); ctx.fill(); }
+  }
+  ctx.restore();
+}
+function drawExtra(kind,x,y,s){
+  ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+  ctx.strokeStyle='rgba(60,36,18,.55)'; ctx.lineWidth=2.5; ctx.lineJoin='round';
+  if(kind==='fries'){
+    ctx.fillStyle='#f7c948';
+    for(const dx of [-11,-4,3,10]){ roundRect(dx-3.5,-30,7,26,2); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle='#e14b3a'; ctx.beginPath();
+    ctx.moveTo(-17,-8); ctx.lineTo(17,-8); ctx.lineTo(12,26); ctx.lineTo(-12,26); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.85)'; roundRect(-9,0,18,9,3); ctx.fill();
+  }else if(kind==='cup'){
+    ctx.strokeStyle='rgba(60,36,18,.55)';
+    ctx.fillStyle='#cfd9e2'; roundRect(2,-38,6,22,3); ctx.fill(); ctx.stroke();           // straw
+    ctx.fillStyle='#8a4a2c'; ctx.beginPath();
+    ctx.moveTo(-16,-18); ctx.lineTo(16,-18); ctx.lineTo(12,26); ctx.lineTo(-12,26); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#e14b3a'; roundRect(-19,-24,38,10,4); ctx.fill(); ctx.stroke();        // lid
+  }else if(kind==='dip'){
+    ctx.fillStyle='#e8e2d4'; roundRect(-16,-6,32,26,6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#f4efe0'; ctx.beginPath(); ctx.ellipse(0,-6,16,7,0,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#fff8e0'; ctx.beginPath(); ctx.ellipse(0,-7,11,4.4,0,0,7); ctx.fill();
+  }else{
+    const g=ctx.createRadialGradient(-6,-6,3,0,0,22);
+    g.addColorStop(0,'#e8b168'); g.addColorStop(1,'#b97b32');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,4,21,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#4a2a16';
+    for(const p of [[-8,-2],[6,-6],[9,8],[-4,11],[0,2]]){ ctx.beginPath(); ctx.arc(p[0],p[1],3.4,0,7); ctx.fill(); }
+  }
+  ctx.restore();
+}
+
+/* ---------- app chrome ---------- */
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,vh);
+  g.addColorStop(0,'#3a2016'); g.addColorStop(0.55,'#1d110c'); g.addColorStop(1,'#100a07');
+  ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+}
+function drawPanel(){
+  ctx.fillStyle='rgba(0,0,0,.45)'; roundRect(PANEL.x-6,PANEL.y+8,PANEL.w+12,PANEL.h,34); ctx.fill();
+  ctx.fillStyle='#fdf6ec'; roundRect(PANEL.x,PANEL.y,PANEL.w,PANEL.h,30); ctx.fill();
+  ctx.fillStyle='#ff7a45'; ctx.save();                                   // app bar
+  roundRect(PANEL.x,PANEL.y,PANEL.w,110,30); ctx.clip();
+  ctx.fillRect(PANEL.x,PANEL.y,PANEL.w,110); ctx.restore();
+  txt(CAMPAIGN.brand, PANEL.x+30, PANEL.y+40, '900 24px system-ui', '#fff');
+  txt(ADDRESS.label+' · '+ADDRESS.line, PANEL.x+30, PANEL.y+74, '600 15px system-ui', 'rgba(255,255,255,.85)');
+  if(S.step<3){                                                          // the 3-tap rail
+    const w=44, gap=8, x0=PANEL.x+PANEL.w-30-(w*3+gap*2);
+    for(let i=0;i<3;i++){
+      ctx.fillStyle = i<S.step ? '#ffe0cc' : i===S.step ? '#fff' : 'rgba(255,255,255,.35)';
+      roundRect(x0+i*(w+gap), PANEL.y+46, w, 8, 4); ctx.fill();
+    }
+    txt('TAP '+(S.step+1)+' OF 3', PANEL.x+PANEL.w-30, PANEL.y+74, '800 13px system-ui', 'rgba(255,255,255,.9)', 'right');
+  }
+}
+function drawHeadline(s){
+  const t=['What are you craving?','Anything else?','Confirm & pay','Your order is on the way'][s];
+  txt(t, PANEL.x+30, PANEL.y+148, '900 27px system-ui', INK);
+  if(s===0){
+    const x=PANEL.x+30, w=PANEL.w-60;
+    ctx.fillStyle='#eaf7ee'; roundRect(x,1030,w,84,18); ctx.fill();
+    txt(CAMPAIGN.promoFooter, x+24, 1072, '800 19px system-ui', '#2e9b57');
+  }
+}
+function drawControl(r){
+  const pressed = S.press===r.id;
+  ctx.save();
+  if(pressed){ ctx.translate(r.x+r.w/2, r.y+r.h/2); ctx.scale(0.978,0.978); ctx.translate(-(r.x+r.w/2), -(r.y+r.h/2)); }
+  if(r.kind==='dishcard'){
+    const d=DISHES[r.i];
+    ctx.fillStyle='rgba(0,0,0,.10)'; roundRect(r.x+3,r.y+5,r.w,r.h,20); ctx.fill();
+    ctx.fillStyle='#fff'; roundRect(r.x,r.y,r.w,r.h,20); ctx.fill();
+    ctx.strokeStyle='rgba(60,36,18,.14)'; ctx.lineWidth=2; roundRect(r.x,r.y,r.w,r.h,20); ctx.stroke();
+    ctx.fillStyle='#fff2e4'; roundRect(r.x+14,r.y+14,142,r.h-28,16); ctx.fill();
+    drawDish(d.kind, r.x+85, r.y+r.h/2, 0.86);
+    txt(d.name, r.x+178, r.y+56, '900 25px system-ui', INK);
+    txt(d.tag,  r.x+178, r.y+90, '600 16px system-ui', DIM);
+    txt(fmt(d.price), r.x+178, r.y+126, '900 24px system-ui', '#ff7a45');
+    ctx.fillStyle='#ff7a45'; roundRect(r.x+r.w-64,r.y+r.h/2-22,44,44,14); ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(r.x+r.w-49,r.y+r.h/2-9); ctx.lineTo(r.x+r.w-38,r.y+r.h/2);
+    ctx.lineTo(r.x+r.w-49,r.y+r.h/2+9); ctx.stroke();
+  }else if(r.kind==='chip'){
+    const e=EXTRAS[r.i], on=!!S.extras[r.i];
+    ctx.fillStyle=on?'#fff1e6':'#fff'; roundRect(r.x,r.y,r.w,r.h,18); ctx.fill();
+    ctx.strokeStyle=on?'#ff7a45':'rgba(60,36,18,.16)'; ctx.lineWidth=on?3.5:2;
+    roundRect(r.x,r.y,r.w,r.h,18); ctx.stroke();
+    drawExtra(e.kind, r.x+42, r.y+r.h/2, 0.72);
+    txt(e.name, r.x+78, r.y+34, '800 17px system-ui', INK);
+    txt('+'+fmt(e.price), r.x+78, r.y+60, '900 17px system-ui', '#ff7a45');
+    ctx.fillStyle=on?'#ff7a45':'rgba(60,36,18,.10)';
+    ctx.beginPath(); ctx.arc(r.x+r.w-28, r.y+26, 14, 0, 7); ctx.fill();
+    if(on){ ctx.strokeStyle='#fff'; ctx.lineWidth=3.5; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(r.x+r.w-34,r.y+26); ctx.lineTo(r.x+r.w-29,r.y+31);
+      ctx.lineTo(r.x+r.w-21,r.y+20); ctx.stroke(); }
+  }else if(r.kind==='addr'){
+    ctx.fillStyle='#fff'; roundRect(r.x,r.y,r.w,r.h,18); ctx.fill();
+    ctx.strokeStyle='rgba(60,36,18,.16)'; ctx.lineWidth=2; roundRect(r.x,r.y,r.w,r.h,18); ctx.stroke();
+    ctx.fillStyle='#ffe6d8'; ctx.beginPath(); ctx.arc(r.x+42,r.y+r.h/2,22,0,7); ctx.fill();
+    ctx.fillStyle='#ff7a45'; ctx.beginPath();
+    ctx.arc(r.x+42,r.y+r.h/2-4,8,Math.PI,0); ctx.lineTo(r.x+42,r.y+r.h/2+12); ctx.closePath(); ctx.fill();
+    txt('Deliver to '+ADDRESS.label, r.x+78, r.y+38, '800 18px system-ui', INK);
+    txt(ADDRESS.line, r.x+78, r.y+66, '600 15px system-ui', DIM);
+    txt('CHANGE', r.x+r.w-24, r.y+r.h/2, '800 14px system-ui', '#ff7a45', 'right');
+  }else if(r.kind==='primary'){
+    const label = r.id==='pay' ? r.label+' · '+fmt(total()) : r.label;
+    ctx.fillStyle='rgba(255,122,69,.35)'; roundRect(r.x,r.y+7,r.w,r.h,26); ctx.fill();
+    const g=ctx.createLinearGradient(0,r.y,0,r.y+r.h);
+    g.addColorStop(0,'#ff9159'); g.addColorStop(1,'#ef5f28');
+    ctx.fillStyle=g; roundRect(r.x,r.y,r.w,r.h,26); ctx.fill();
+    txt(label, r.x+r.w/2, r.y+r.h/2, '900 26px system-ui', '#fff', 'center');
+  }
+  ctx.restore();
+}
+/** extras screen: the chosen dish with every selected extra on the tray, so
+    the order is a picture and not a list */
+function drawTray(){
+  const d=dish(); if(!d) return;
+  drawDish(d.kind, 360, 486, 1.35);
+  // slots alternate sides so two extras never stack up on one side of the dish
+  const slots=[[224,540],[496,540],[496,420],[224,420]];
+  EXTRAS.forEach((e,i)=>{ if(S.extras[i]) drawExtra(e.kind, slots[i][0], slots[i][1], 0.95); });
+  txt(d.name, 360, 592, '900 24px system-ui', INK, 'center');
+  txt('Tap to add · '+fmt(total()), 360, 628, '700 18px system-ui', '#ff7a45', 'center');
+}
+/** checkout: the receipt is built from the same total() the end card uses */
+function drawReceipt(){
+  const x=PANEL.x+30, w=PANEL.w-60; let y=430;
+  ctx.fillStyle='#fff'; roundRect(x,400,w,412,20); ctx.fill();
+  ctx.strokeStyle='rgba(60,36,18,.14)'; ctx.lineWidth=2; roundRect(x,400,w,412,20); ctx.stroke();
+  const d=dish();
+  if(d){ drawDish(d.kind, x+62, y+26, 0.62);
+    txt(d.name, x+120, y+14, '900 22px system-ui', INK);
+    txt('1 ×', x+120, y+42, '600 15px system-ui', DIM);
+    txt(fmt(d.price), x+w-24, y+26, '900 21px system-ui', INK, 'right');
+    y+=92;
+  }
+  for(const e of extrasList()){
+    drawExtra(e.kind, x+62, y+6, 0.46);
+    txt(e.name, x+120, y+6, '700 18px system-ui', DIM);
+    txt('+'+fmt(e.price), x+w-24, y+6, '800 18px system-ui', DIM, 'right');
+    y+=52;
+  }
+  ctx.strokeStyle='rgba(60,36,18,.18)'; ctx.lineWidth=2; ctx.setLineDash([7,7]);
+  ctx.beginPath(); ctx.moveTo(x+24,754); ctx.lineTo(x+w-24,754); ctx.stroke(); ctx.setLineDash([]);
+  txt('Delivery', x+24, 730, '600 16px system-ui', DIM);
+  txt(CAMPAIGN.deliveryFee, x+w-24, 730, '800 16px system-ui', '#3fbf6a', 'right');
+  txt('Total', x+24, 782, '900 22px system-ui', INK);
+  txt(fmt(total()), x+w-24, 782, '900 24px system-ui', '#ff7a45', 'right');
+}
+/** the delivery map: blocks, a route polyline and a courier walking it by
+    arc length, so the ETA and the icon can never disagree */
+const ROUTE=[[0.10,0.86],[0.10,0.54],[0.44,0.54],[0.44,0.26],[0.80,0.26],[0.80,0.10]];
+function routePoint(t,m){
+  const pts=ROUTE.map(p=>[m.x+p[0]*m.w, m.y+p[1]*m.h]);
+  const segs=[]; let tot=0;
+  for(let i=0;i<pts.length-1;i++){ const L=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]); segs.push(L); tot+=L; }
+  let d=t*tot;
+  for(let i=0;i<segs.length;i++){
+    if(d<=segs[i]||i===segs.length-1){ const k=clamp(d/segs[i],0,1);
+      return [pts[i][0]+(pts[i+1][0]-pts[i][0])*k, pts[i][1]+(pts[i+1][1]-pts[i][1])*k]; }
+    d-=segs[i];
+  }
+  return pts[pts.length-1];
+}
+function drawMap(){
+  const m={x:PANEL.x+30, y:400, w:PANEL.w-60, h:470};
+  ctx.save();
+  roundRect(m.x,m.y,m.w,m.h,20); ctx.clip();
+  ctx.fillStyle='#e8e2d6'; ctx.fillRect(m.x,m.y,m.w,m.h);
+  ctx.fillStyle='#d8d0c0';
+  for(let r=0;r<5;r++) for(let c=0;c<4;c++)
+    roundRect(m.x+16+c*(m.w-32)/4, m.y+14+r*(m.h-28)/5, (m.w-32)/4-14, (m.h-28)/5-14, 7), ctx.fill();
+  ctx.strokeStyle='#fdf9f0'; ctx.lineWidth=14;
+  for(let c=1;c<4;c++){ ctx.beginPath(); ctx.moveTo(m.x+c*m.w/4,m.y); ctx.lineTo(m.x+c*m.w/4,m.y+m.h); ctx.stroke(); }
+  for(let r=1;r<5;r++){ ctx.beginPath(); ctx.moveTo(m.x,m.y+r*m.h/5); ctx.lineTo(m.x+m.w,m.y+r*m.h/5); ctx.stroke(); }
+  const pts=ROUTE.map(p=>[m.x+p[0]*m.w, m.y+p[1]*m.h]);
+  ctx.strokeStyle='rgba(255,122,69,.30)'; ctx.lineWidth=13; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.stroke();
+  ctx.strokeStyle='#ff7a45'; ctx.lineWidth=7; ctx.setLineDash([16,12]); ctx.lineDashOffset=-S.time*40;
+  ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.stroke(); ctx.setLineDash([]);
+  const pin=(x,y,col,glyph)=>{
+    ctx.fillStyle='rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(x,y+3,12,4,0,0,7); ctx.fill();
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(x,y-16,15,Math.PI,0); ctx.lineTo(x,y+2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font='700 15px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(glyph,x,y-17);
+  };
+  pin(pts[0][0],pts[0][1],'#3a2a1c','🍔');
+  pin(pts[pts.length-1][0],pts[pts.length-1][1],'#3fbf6a','🏠');
+  const c=routePoint(S.track,m);                                    // courier
+  ctx.save(); ctx.translate(c[0],c[1]);
+  ctx.fillStyle='rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(0,16,17,5,0,0,7); ctx.fill();
+  ctx.fillStyle='#2f6f8f'; ctx.beginPath(); ctx.arc(0,0,17,0,7); ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,17,0,7); ctx.stroke();
+  ctx.font='18px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('🛵',0,1);
+  ctx.restore();
+  ctx.restore();
+  ctx.strokeStyle='rgba(60,36,18,.16)'; ctx.lineWidth=2; roundRect(m.x,m.y,m.w,m.h,20); ctx.stroke();
+
+  const st = S.track>=1 ? 'Delivered — enjoy!' : S.track>0.72 ? 'Arriving now' :
+             S.track>0.24 ? 'Ana is on the way' : 'Preparing your order';
+  const eta = Math.max(1,Math.ceil((1-S.track)*CAMPAIGN.etaMinutes));
+  txt(st, PANEL.x+30, 916, '900 24px system-ui', INK);
+  txt(S.track>=1?'Order complete':'Arriving in ~'+eta+' min', PANEL.x+30, 950, '700 18px system-ui', DIM);
+  const bx=PANEL.x+30, bw=PANEL.w-60;
+  ctx.fillStyle='rgba(60,36,18,.12)'; roundRect(bx,984,bw,14,7); ctx.fill();
+  ctx.fillStyle='#ff7a45'; roundRect(bx,984,Math.max(14,bw*S.track),14,7); ctx.fill();
+  txt('Total paid '+fmt(total()), bx, 1036, '800 19px system-ui', INK);
+  ctx.fillStyle='#fff'; roundRect(bx,1064,bw,96,18); ctx.fill();
+  ctx.strokeStyle='rgba(60,36,18,.14)'; ctx.lineWidth=2; roundRect(bx,1064,bw,96,18); ctx.stroke();
+  ctx.fillStyle='#ffe6d8'; ctx.beginPath(); ctx.arc(bx+52,1112,30,0,7); ctx.fill();
+  ctx.font='30px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('🛵',bx+52,1114);
+  txt(CAMPAIGN.courierName, bx+98, 1098, '800 19px system-ui', INK);
+  txt(CAMPAIGN.courierStats, bx+98, 1128, '600 15px system-ui', DIM);
+  ctx.fillStyle='#eaf7ee'; roundRect(bx+bw-108,1094,88,36,18); ctx.fill();
+  txt('CALL', bx+bw-64, 1112, '800 15px system-ui', '#2e9b57', 'center');
+}
+function drawHand(){
+  if(S.mode!=='run' || S.time-S.lastInput<CONFIG.idleHint || S.step===3) return;
+  const r=nextAction(); if(!r) return;
+  const k=(Math.sin(S.handPh*3.2)+1)/2;
+  ctx.save();
+  ctx.strokeStyle='rgba(255,122,69,'+(0.35+0.4*(1-k))+')'; ctx.lineWidth=5;
+  roundRect(r.x-6,r.y-6,r.w+12,r.h+12,24); ctx.stroke();
+  ctx.translate(r.x+r.w/2+26, r.y+r.h/2+34+k*10);
+  ctx.font='52px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=10;
+  ctx.fillText('👆',0,0);
+  ctx.restore();
+}
+function drawParts(){
+  for(const p of S.parts){
+    const a=1-p.age/p.life;
+    ctx.globalAlpha=a; ctx.fillStyle=p.color;
+    if(p.kind==='conf'){ ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r); ctx.restore(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+function drawFloats(){
+  for(const f of S.floats){
+    const a=1-f.age/f.life;
+    ctx.globalAlpha=a; ctx.fillStyle=f.color;
+    ctx.font='900 '+f.size+'px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=4;
+    ctx.strokeText(f.txt,f.x,f.y); ctx.fillText(f.txt,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);                 // draw in CSS px, sharp on retina
+  drawBG();
+  const sh=S.shake, shx=sh?rnd(-sh,sh)*scale:0, shy=sh?rnd(-sh,sh)*scale:0;
+  ctx.save(); ctx.translate(ox+shx,oy+shy); ctx.scale(scale,scale);
+  drawPanel();
+  ctx.save();
+  ctx.globalAlpha=ease(clamp(S.slide,0,1));                       // screens slide in
+  ctx.translate((1-ease(clamp(S.slide,0,1)))*46,0);
+  drawHeadline(S.step);
+  if(S.step===1) drawTray();
+  if(S.step===2) drawReceipt();
+  if(S.step===3) drawMap();
+  for(const r of layout(S.step)) drawControl(r);
+  ctx.restore();
+  drawHand();
+  drawParts();
+  drawFloats();
+  ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt);
+  draw();
+}
+
+/* MRAID-aware start */
+function applyCampaignCopy(){                       // the DOM half of the same block
+  $('title').textContent=CAMPAIGN.brand;
+  $('sub').textContent=CAMPAIGN.tagline;
+  $('cta').textContent=CAMPAIGN.ctaLabel;
+  $('endNote').textContent=CAMPAIGN.endNote;
+}
+function start(){ applyCampaignCopy(); newRun(); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* =========================================================================
+   DEBUG HOOKS — headless stepping and verification
+   ========================================================================= */
+window.__game={ S, CONFIG, CAMPAIGN, DISHES, EXTRAS, layout, total, fmt, newRun, end:showEnd, next:nextAction,
+  applyCampaignCopy,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); draw(); },
+  tap:id=>act(layout(S.step).find(r=>r.id===id),true),
+  tapAt:(x,y)=>act(hitAt(x,y),true),
+  /** the flow as authored: every screen's controls fit the panel, meet a touch
+      minimum and do not overlap — plus the money. A brand creative that shows a
+      wrong total is not a cosmetic bug, so every reachable order is summed and
+      re-parsed from its formatted string. */
+  audit:()=>{
+    const screens=[];
+    for(let s=0;s<STEPS.length;s++){
+      const R=layout(s), bad=[];
+      for(const r of R){
+        if(r.x<PANEL.x || r.y<PANEL.y+120 || r.x+r.w>PANEL.x+PANEL.w || r.y+r.h>PANEL.y+PANEL.h)
+          bad.push(r.id+' outside panel');
+        if(r.w<64||r.h<44) bad.push(r.id+' below touch minimum');
+      }
+      for(let i=0;i<R.length;i++) for(let j=i+1;j<R.length;j++){
+        const a=R[i],b=R[j];
+        if(a.x<b.x+b.w && b.x<a.x+a.w && a.y<b.y+b.h && b.y<a.y+a.h) bad.push(a.id+' overlaps '+b.id);
+      }
+      screens.push({screen:STEPS[s], controls:R.length, problems:bad,
+                    advances: s<3 ? !!advanceControlFor(s) : true});
+    }
+    const keepD=S.dish, keepE=S.extras; let combos=0, money=[];
+    for(let d=0;d<DISHES.length;d++) for(let m=0;m<16;m++){
+      S.dish=d; S.extras={}; for(let b=0;b<4;b++) if(m&(1<<b)) S.extras[b]=true;
+      let ref=DISHES[d].price; for(let b=0;b<4;b++) if(m&(1<<b)) ref+=EXTRAS[b].price;
+      const t=total(), back=Math.round(parseFloat(fmt(t).slice(1))*100);
+      combos++;
+      if(t!==ref || back!==ref) money.push(`${DISHES[d].name}/${m}: ${t} vs ${ref} (${fmt(t)})`);
+    }
+    S.dish=keepD; S.extras=keepE;
+    // every campaign-owned field still holding its shipped default. Expected to
+    // be long in this build; a campaign build must drive it to [].
+    const shipped=JSON.parse(CAMPAIGN_SHIPPED), ph=[];
+    for(const k in shipped) if(JSON.stringify(CAMPAIGN[k])===JSON.stringify(shipped[k])) ph.push(k);
+    return {screens, moneyCombosChecked:combos, moneyMismatches:money,
+            campaignPlaceholders:ph, campaignFields:Object.keys(shipped).length,
+            minTotal:fmt(DISHES[0].price),
+            maxTotal:fmt(DISHES[2].price+EXTRAS.reduce((s,e)=>s+e.price,0))};
+  },
+  /** untouched impression: the ad taps through its own flow */
+  solve:(maxSec=90,dt=1/30)=>{
+    S.time=0; newRun(); S.lastInput=-999; S.autoOn=true;
+    const marks=[]; let st=-1;
+    for(let i=0;i<maxSec/dt && S.mode!=='end'; i++){
+      update(dt);
+      if(S.step!==st){ st=S.step; marks.push(`t=${S.time.toFixed(1)} ${STEPS[st]}`); }
+    }
+    return { finished:S.mode==='end', t:+S.time.toFixed(1), delivered:S.delivered,
+             dish:dish()&&dish().name, extras:extrasList().map(e=>e.name), total:fmt(total()),
+             taps:S.taps, helps:S.helps, marks };
+  },
+  /** somebody poking the screen at random, never idle enough for the autopilot.
+      Proves the stuck-help gets every impression to the end card. */
+  stress:(trials=60,maxSec=140,seed=12345,dt=1/30)=>{
+    let z=seed>>>0; const rand=()=>{ z=(z*1664525+1013904223)>>>0; return z/4294967296; };
+    let ok=0, sum=0, worst=0, helps=0;
+    for(let n=0;n<trials;n++){
+      S.time=0; newRun(); S.autoOn=false; let acc=0;
+      for(let i=0;i<maxSec/dt && S.mode!=='end'; i++){
+        update(dt);
+        S.lastInput=S.time;                        // an ACTIVE user: autopilot never engages
+        acc+=dt;
+        if(acc>=0.6){ acc=0; const r=hitAt(rand()*SW, rand()*SH); if(r) act(r,true); }
+      }
+      if(S.mode==='end' && S.delivered){ ok++; sum+=S.time; worst=Math.max(worst,S.time); helps+=S.helps; }
+    }
+    return { trials, completed:ok, rate:+(ok/trials).toFixed(3), avgSec:+(sum/Math.max(ok,1)).toFixed(1),
+             worstSec:+worst.toFixed(1), avgSkips:+(helps/Math.max(ok,1)).toFixed(2) };
+  },
+};
+function advanceControlFor(s){
+  const R=layout(s);
+  if(s===0) return R[0];
+  if(s===1) return R.find(r=>r.id==='next');
+  if(s===2) return R.find(r=>r.id==='pay');
+  return null;
+}
+</script>
+</body>
+</html>

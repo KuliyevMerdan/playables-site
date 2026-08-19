@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Bubble Pop — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0d1420; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(26px,6vw); font-weight:900; letter-spacing:4px; color:#5ad2ff;
+    text-shadow:0 2px 0 #084a66, 0 4px 14px rgba(0,0,0,.55); }
+  #lvl { margin-top:2px; font-size:12px; font-weight:700; letter-spacing:3px; color:#7d8ba3; }
+  #goal { margin-top:6px; display:inline-flex; align-items:center; gap:8px; padding:5px 14px; border-radius:16px;
+    background:rgba(0,0,0,.34); color:#fff; font-weight:800; font-size:15px; transition:transform .12s; }
+  #goal .orb { width:15px; height:15px; border-radius:50%;
+    background:radial-gradient(circle at 34% 30%, #fff 0%, #7fe0ff 34%, #1d8fd0 100%); box-shadow:0 0 8px rgba(90,210,255,.7); }
+  #goal.pop { transform:scale(1.25); }
+  #goal.low { background:rgba(255,90,80,.30); }
+
+  /* a short portrait frame (the showcase's phone iframe, small handsets) letterboxes
+     the scene with thin bars, so the ceiling rail rides up under the header — shrink
+     the header rather than let the chip sit on the board */
+  @media (orientation:portrait) and (max-height:620px){
+    #title { font-size:min(20px,5.4vw); letter-spacing:3px; }
+    #lvl { font-size:10px; letter-spacing:2px; }
+    #goal { margin-top:3px; padding:3px 11px; font-size:13px; }
+    #goal .orb { width:12px; height:12px; }
+  }
+
+  /* landscape letterboxes the same scene, so the HUD has to shrink onto one line
+     or it lands on top of the bubbles */
+  @media (orientation:landscape) and (max-height:520px){
+    #hdr { top:calc(4px + env(safe-area-inset-top)); }
+    #title { font-size:20px; letter-spacing:3px; }
+    #lvl { font-size:10px; margin-top:0; display:inline-block; }
+    #goal { margin:0 0 0 9px; padding:3px 11px; font-size:13px; vertical-align:middle; }
+  }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- Toast ---------- */
+  /* sits between the HUD and the ceiling rail, never over the cluster */
+  #toast { position:absolute; top:15.5%; left:0; right:0; text-align:center; font-size:min(38px,8.6vw); font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.55);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#ffd23f; } #toast.drop { color:#5ad2ff; } #toast.help { color:#8affc1; }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    background:radial-gradient(ellipse at 50% 30%, #204058 0%, #0d1420 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:96px; height:96px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:linear-gradient(160deg,#a8e9ff,#2f9fd6); box-shadow:0 10px 30px rgba(0,0,0,.55), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:min(30px,7vw); font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.45); }
+  #endPups { font-size:min(30px,7vw); letter-spacing:6px; }
+  #end p  { color:#93a3b8; font-size:16px; margin-top:-4px; text-align:center; padding:0 34px; line-height:1.35; }
+  #cta { margin-top:6px; padding:18px 64px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#7d8797; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="hdr"><div id="title">BUBBLE POP</div><div id="lvl">LEVEL 1 / 3</div>
+  <div id="goal"><span class="orb"></span><span id="goalTxt">6 SHOTS</span></div></div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="end">
+  <div class="icon">🐶</div>
+  <h1>All pups rescued!</h1>
+  <div id="endPups">🐶🐶🐶</div>
+  <p id="endSub">48 bubbles popped.</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Watch again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   BUBBLE POP — self-contained playable ad (bubble shooter)
+   Scene designed in 720x1280 virtual units, letterbox-scaled to viewport.
+   All timing runs on sim time (S.time) so the whole game is headless-steppable
+   through window.__game.tick().
+
+   The hook: a pup is trapped INSIDE a bubble at the bottom of the cluster. It
+   is never poppable by colour — the only way to free it is to sever the chain
+   of bubbles that ties it to the ceiling, so every level is "cut the support"
+   and the genre's best moment (a detached chunk falling) IS the win condition.
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL:'https://apps.apple.com/app/id000000000',  // replace per campaign
+  speed:2150,            // px/s — bubble flight along the predicted path
+  reload:0.20,           // s before the next bubble is loaded
+  settle:0.09,           // s between the bubble landing and the pop resolving
+  fallGrav:2300,         // px/s^2 for detached bubbles
+  pupBurst:0.42,         // s the pup bubble falls before it bursts open
+  idleHint:3.0,          // s idle -> aim guide + hand
+  idleAuto:6.5,          // s idle -> the ad plays itself, so it always self-completes
+  autoAim:0.75,          // s the autopilot spends "aiming" before it fires
+  autoStep:0.55,         // s extra pause between autopilot shots
+  refillPause:0.55,      // s the free-refill toast holds before play resumes
+  winPause:2.6,          // s on the rescue before the next level
+  autoEnd:105,           // s -> force end card
+};
+
+/* ---------- tiny helpers ---------- */
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const rnd   = (a,b)=>a+Math.random()*(b-a);
+const ease  = t=>t*t*(3-2*t);
+const $ = id=>document.getElementById(id);
+const vibe = p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+
+/* =========================================================================
+   AUDIO — synthesized, no assets
+   ========================================================================= */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  shoot(){ this.tone(520,180,0.09,'square',0.055); },
+  stick(){ this.tone(300,220,0.06,'sine',0.075); },
+  wall(){  this.tone(210,150,0.05,'triangle',0.05); },
+  pop(n){  const f=520*Math.pow(1.0595,Math.min(n,14)); this.tone(f,f*1.9,0.10,'sine',0.13);   // pitch climbs per bubble
+           this.tone(f*2,f*1.2,0.06,'triangle',0.05,0.02); },
+  drop(n){ for(let i=0;i<3;i++) this.tone(880-i*160,120,0.30,'triangle',0.09,i*0.05);
+           this.tone(70,40,0.5,'sine',0.10+Math.min(n,16)*0.004,0.05); },
+  bomb(){  this.tone(180,30,0.55,'sawtooth',0.16); this.tone(90,25,0.7,'square',0.10,0.02); },
+  refill(){ [523,659,784].forEach((f,i)=>this.tone(f,f,0.13,'square',0.09,i*0.07)); },
+  win(){   [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.20,'triangle',0.18,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* =========================================================================
+   CTA / MRAID
+   ========================================================================= */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{
+  $('end').classList.remove('show');
+  S.pups=0; S.totalPops=0; S.totalDrops=0; S.bestDrop=0; S.refills=0; S.time=0; S.autoOn=false; loadLevel(0);
+});
+
+/* =========================================================================
+   RENDER SETUP — 720x1280 scene, letterboxed
+   ========================================================================= */
+const cv=$('game'), ctx=cv.getContext('2d');
+const SW=720, SH=1280;
+let vw=0, vh=0, dpr=1, scale=1, ox=0, oy=0;
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';   // fixed inset:0 alone won't size a canvas
+  scale=Math.min(vw/SW,vh/SH); ox=(vw-SW*scale)/2; oy=(vh-SH*scale)/2;
+}
+addEventListener('resize',resize); resize();
+const toScene = (px,py)=>[(px-ox)/scale, (py-oy)/scale];
+
+/* =========================================================================
+   HEX BOARD — "odd-r" offset grid: odd rows are shifted right by one radius,
+   so even rows hold 9 bubbles and odd rows hold 8.
+   Neighbour offsets differ per row parity — that asymmetry is the single
+   easiest thing to get wrong here, so it lives in exactly one function.
+   ========================================================================= */
+const R=34, D=68, RH=D*Math.sqrt(3)/2;         // radius, spacing, row pitch (58.89)
+const MAXR=11, COLS_E=9;                        // 11 rows is the deepest that still fits above the cannon
+const BX=54, BY=288;                            // board left edge / ceiling line
+const WALL_L=54, WALL_R=666;                    // bounce walls, flush with the columns
+const CX=360, CY=1032;                          // cannon muzzle
+const TANK_B=972;                               // tank floor — the cannon sits just under it
+const HITD2=(D*0.88)*(D*0.88);                  // overlap distance^2 that counts as a hit
+const BOMBR2=(D*1.75)*(D*1.75);
+
+const markFloor=820;                            // where the freed pup lands and bounces
+const cols = r=>(r%2 ? COLS_E-1 : COLS_E);
+const cellX = (r,c)=>BX+R+(r%2?R:0)+c*D;
+const cellY = r=>BY+R+r*RH;
+const inGrid = (r,c)=>r>=0 && r<MAXR && c>=0 && c<cols(r);
+/** the six hex neighbours; up/down columns shift with row parity */
+function nbrs(r,c){
+  const odd=r%2, o=[[0,-1],[0,1],[-1,odd-1],[-1,odd],[1,odd-1],[1,odd]], a=[];
+  for(const d of o){ const nr=r+d[0], nc=c+d[1]; if(inGrid(nr,nc)) a.push([nr,nc]); }
+  return a;
+}
+
+/* colour + glyph double coding: nothing here relies on hue alone */
+const PUP=8, BOMB=9;
+const COLORS=[
+  {body:'#ff5f57', dark:'#8e1f19', hi:'#ffc0bb', glyph:'star'},   // 0 red
+  {body:'#4a9bff', dark:'#17457f', hi:'#bcdaff', glyph:'ring'},   // 1 blue
+  {body:'#ffc53d', dark:'#8f6206', hi:'#ffedbb', glyph:'dot'},    // 2 amber
+  {body:'#3ed17f', dark:'#0f6a3c', hi:'#bdf5d6', glyph:'tri'},    // 3 green
+  {body:'#b06bf5', dark:'#5f2c99', hi:'#e2caff', glyph:'cross'},  // 4 violet
+];
+const CHARK={r:0,b:1,y:2,g:3,v:4,'@':PUP};
+
+/* =========================================================================
+   LEVELS
+   rows[] are strings, one per grid row: 9 chars on even rows, 8 on odd.
+   r=red b=blue y=amber g=green v=violet '@'=the trapped pup '.'=empty
+   Every level is built the same way: a canopy on the ceiling, one or more
+   thin SUPPORTS, and the pup hanging under them. Cut the supports -> the
+   whole hanging mass (pup included) loses its path to the ceiling and falls.
+   __game.audit() checks that nothing is pre-detached and that the pup starts
+   attached; __game.solve() plays a level headlessly and reports the shots.
+   ========================================================================= */
+const LEVELS = [
+  { // L1 — teach the cut. One support (the amber at r2c4) holds the pup's vine;
+    // the blue leaves on either side are honest alternative targets.
+    ammo:'byyb', demo:1,
+    rows:['..rrbbr..',
+          '..byyb..',
+          '..b.y.b..',
+          '....b...',
+          '....@....'],
+  },
+  { // L2 — two supports: a red column on the left, a blue pair on the right,
+    // both holding one shared plate. The plate only falls when BOTH are cut.
+    ammo:'rbybg', demo:2,
+    rows:['.brygyrb.',
+          '.ryggyr.',
+          '..r...bb.',
+          '..yggy..',
+          '....@....'],
+  },
+  { // L3 — the avalanche. A 15-bubble mass hangs from two 2-bubble chains at
+    // the outer columns; the side lanes are kept clear so both are reachable.
+    ammo:'g', demo:1,
+    rows:['.g.....v.',
+          '.g....v.',
+          '..rybyr..',
+          '..ybrb..',
+          '...bry...',
+          '...ry...',
+          '....@....'],
+  },
+];
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const S = {
+  mode:'play',              // play | clear | end
+  time:0, li:0,
+  g:[], ammo:[], fly:null, landed:null, reload:0,
+  fallers:[], parts:[], timers:[], pup:null,
+  aim:0, aiming:false, guide:null,
+  shots:0, pops:0, drops:0,
+  pups:0, totalPops:0, totalDrops:0, bestDrop:0, refills:0,
+  lastInput:0, autoOn:false, autoFireAt:0, handPh:0, tip:1,
+  shake:0, seq:0, cache:null,
+};
+function later(sec,fn){ S.timers.push({t:S.time+sec,fn}); }
+
+/* ---------- grid construction ---------- */
+function blankGrid(){ const g=[]; for(let r=0;r<MAXR;r++) g.push(new Array(cols(r)).fill(null)); return g; }
+function gridFromLevel(i){
+  const g=blankGrid(), rows=LEVELS[i].rows;
+  for(let r=0;r<rows.length;r++){
+    const s=rows[r];
+    for(let c=0;c<cols(r);c++){
+      const ch=s[c]; if(ch===undefined||ch==='.') continue;
+      g[r][c]=CHARK[ch];
+    }
+  }
+  return g;
+}
+const ammoOf = i=>LEVELS[i].ammo.split('').map(ch=>CHARK[ch]);
+
+function loadLevel(i){
+  S.li=i; S.g=gridFromLevel(i); S.ammo=ammoOf(i);
+  S.fallers=[]; S.parts=[]; S.timers=[]; S.pup=null; S.fly=null; S.landed=null; S.reload=0;
+  S.shots=0; S.pops=0; S.drops=0; S.aim=0; S.aiming=false; S.guide=null;
+  S.mode='play'; S.lastInput=S.time; S.autoFireAt=0; S.handPh=0; S.shake=0;
+  S.seq++; S.cache=null;
+  $('lvl').textContent=`LEVEL ${i+1} / ${LEVELS.length}`;
+  $('end').classList.remove('show');
+  ammoUpd(false);
+}
+
+/* =========================================================================
+   GRID LOGIC — pure functions over a grid, so the autopilot, the aim guide
+   and __game.solve() all evaluate shots on throwaway copies of the board.
+   ========================================================================= */
+const cloneGrid = g=>g.map(row=>row.slice());
+const key = (r,c)=>r*16+c;
+
+/** connected run of the same colour from (r,c); PUP and BOMB never match */
+function cluster(g,r,c){
+  const k=g[r][c]; if(k==null||k>=PUP) return [];
+  const seen={}, out=[], st=[[r,c]]; seen[key(r,c)]=1;
+  while(st.length){
+    const [cr,cc]=st.pop(); out.push([cr,cc]);
+    for(const [nr,nc] of nbrs(cr,cc)){
+      if(seen[key(nr,nc)] || g[nr][nc]!==k) continue;
+      seen[key(nr,nc)]=1; st.push([nr,nc]);
+    }
+  }
+  return out;
+}
+/** every cell still reachable from the ceiling row — the rest is falling */
+function ceilingSet(g){
+  const seen={}, st=[];
+  for(let c=0;c<cols(0);c++) if(g[0][c]!=null){ seen[key(0,c)]=1; st.push([0,c]); }
+  while(st.length){
+    const [cr,cc]=st.pop();
+    for(const [nr,nc] of nbrs(cr,cc)){
+      if(seen[key(nr,nc)] || g[nr][nc]==null) continue;
+      seen[key(nr,nc)]=1; st.push([nr,nc]);
+    }
+  }
+  return seen;
+}
+/** place a bubble and resolve it. Mutates g; returns what left the board. */
+function applyShot(g,cell,k){
+  const [r,c]=cell, popped=[], dropped=[];
+  if(k===BOMB){
+    const px=cellX(r,c), py=cellY(r);
+    for(let rr=0;rr<MAXR;rr++) for(let cc=0;cc<cols(rr);cc++){
+      if(g[rr][cc]==null) continue;
+      const dx=cellX(rr,cc)-px, dy=cellY(rr)-py;
+      if(dx*dx+dy*dy<=BOMBR2) popped.push([rr,cc,g[rr][cc]]);
+    }
+  }else{
+    g[r][c]=k;
+    const cl=cluster(g,r,c);
+    if(cl.length>=3) for(const [rr,cc] of cl) popped.push([rr,cc,g[rr][cc]]);
+  }
+  for(const p of popped) g[p[0]][p[1]]=null;
+  if(popped.length){
+    const keep=ceilingSet(g);
+    for(let rr=0;rr<MAXR;rr++) for(let cc=0;cc<cols(rr);cc++)
+      if(g[rr][cc]!=null && !keep[key(rr,cc)]) dropped.push([rr,cc,g[rr][cc]]);
+    for(const d of dropped) g[d[0]][d[1]]=null;
+  }
+  const freed = popped.some(p=>p[2]===PUP) || dropped.some(d=>d[2]===PUP);
+  return {popped, dropped, freed};
+}
+
+/* =========================================================================
+   SHOT SIMULATION — one function drives the player's aim guide, the tutorial
+   hand, the autopilot and the headless solver. Marching in fixed steps with
+   wall reflections is exactly what the flying bubble then replays.
+   ========================================================================= */
+const STEP=7;
+function hitAt(g,x,y){
+  const r0=Math.max(0,Math.floor((y-BY-R)/RH)-1), r1=Math.min(MAXR-1,r0+2);
+  for(let r=r0;r<=r1;r++){
+    const row=g[r];
+    for(let c=0;c<row.length;c++){
+      if(row[c]==null) continue;
+      const dx=cellX(r,c)-x, dy=cellY(r)-y;
+      if(dx*dx+dy*dy<HITD2) return true;
+    }
+  }
+  return false;
+}
+/** nearest empty cell that actually touches the cluster (or hangs off the ceiling) */
+function freeCellNear(g,x,y){
+  let best=null, bd=1e9;
+  for(let r=0;r<MAXR;r++) for(let c=0;c<cols(r);c++){
+    if(g[r][c]!=null) continue;
+    if(r>0 && !nbrs(r,c).some(n=>g[n[0]][n[1]]!=null)) continue;
+    const dx=cellX(r,c)-x, dy=cellY(r)-y, d=dx*dx+dy*dy;
+    if(d<bd){ bd=d; best=[r,c]; }
+  }
+  return best;
+}
+/** ang: 0 = straight up, + = right. Returns the flight path and landing cell. */
+function simShot(ang,g){
+  let x=CX, y=CY, vx=Math.sin(ang), vy=-Math.cos(ang), bounces=0;
+  const path=[[x,y]];
+  for(let i=0;i<1400;i++){
+    x+=vx*STEP; y+=vy*STEP;
+    if(x<WALL_L+R){ x=WALL_L+R; vx=-vx; path.push([x,y]); if(++bounces>3) break; }
+    else if(x>WALL_R-R){ x=WALL_R-R; vx=-vx; path.push([x,y]); if(++bounces>3) break; }
+    if(y-R<=BY){ y=BY+R; break; }
+    if(hitAt(g,x,y)) break;
+    if(y>CY+40) break;
+  }
+  path.push([x,y]);
+  return {path, cell:freeCellNear(g,x,y), bounces};
+}
+/** how good would landing k in this cell be? drops and the rescue dominate. */
+function scoreShot(g,cell,k){
+  if(!cell) return {score:-1e9, freed:false};
+  const gg=cloneGrid(g), res=applyShot(gg,cell,k);
+  let s = res.popped.length + res.dropped.length*3.2;
+  if(res.freed) s += 1000;
+  if(!res.popped.length){                       // no pop: reward setting one up, punish burying the board
+    let same=0; for(const [nr,nc] of nbrs(cell[0],cell[1])) if(g[nr][nc]===k) same++;
+    s = same*0.6 - cell[0]*0.05;
+  }
+  return {score:s, freed:res.freed, pops:res.popped.length};
+}
+const ANGN=96, ANGMAX=1.36;                      // ~78 degrees each way
+/** avoidWin holds the winning cut back so the ad demonstrates the mechanic
+    (pop a cluster) before it plays the payoff — otherwise a passive impression
+    solves L1 in one shot and the whole ad is over in 15 s. A held-back shot
+    must still POP something: parking a bubble to burn a turn can become a new
+    support and shrink the finale, so when no non-winning pop exists the ad
+    takes the kill instead of faking a move. */
+function bestShot(g,k,avoidWin){
+  let best=null, bestWin=null;
+  for(let i=0;i<=ANGN;i++){
+    const ang=-ANGMAX+2*ANGMAX*i/ANGN;
+    const s=simShot(ang,g);
+    if(!s.cell) continue;
+    const sc=scoreShot(g,s.cell,k);
+    const cand={ang, score:sc.score, path:s.path, cell:s.cell, freed:sc.freed, pops:sc.pops};
+    if(!bestWin || sc.score>bestWin.score) bestWin=cand;
+    if(avoidWin && (sc.freed || !sc.pops)) continue;
+    if(!best || sc.score>best.score) best=cand;
+  }
+  return best||bestWin;                          // no useful warm-up left -> take the kill
+}
+/** what the ad wants to do right now; the tutorial hand shows the same shot,
+    so the hint and the autopilot can never disagree */
+function planShot(){
+  const k=S.ammo[0];
+  return bestShot(S.g,k, S.shots < (LEVELS[S.li].demo||0));
+}
+/** cached for the live board: the hint redraws every frame, the search must not */
+function bestNow(){
+  const k=S.ammo[0];
+  if(k===undefined) return null;
+  if(S.cache && S.cache.seq===S.seq && S.cache.k===k && S.cache.n===S.shots) return S.cache.b;
+  const b=planShot();
+  S.cache={seq:S.seq, k, n:S.shots, b};
+  return b;
+}
+/** the two colours the board is most made of — what a free refill hands you */
+function topColors(g,n){
+  const cnt=[0,0,0,0,0];
+  for(let r=0;r<MAXR;r++) for(let c=0;c<cols(r);c++){ const k=g[r][c]; if(k!=null&&k<PUP) cnt[k]++; }
+  return cnt.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]).filter(p=>p[0]>0).slice(0,n).map(p=>p[1]);
+}
+
+/* =========================================================================
+   ACTIONS
+   ========================================================================= */
+const canShoot = ()=>S.mode==='play' && !S.fly && !S.landed && S.reload<=0 && S.ammo.length>0;
+
+function setAim(x,y){
+  const dx=x-CX, dy=y-CY;
+  S.aim=clamp(Math.atan2(dx,-dy),-ANGMAX,ANGMAX);
+  S.guide=simShot(S.aim,S.g);
+}
+function fire(){
+  if(!canShoot()) return false;
+  const k=S.ammo[0], sim=simShot(S.aim,S.g);
+  if(!sim.cell) return false;
+  const segs=[]; let total=0;
+  for(let i=0;i<sim.path.length-1;i++){
+    const a=sim.path[i], b=sim.path[i+1];
+    const L=Math.hypot(b[0]-a[0],b[1]-a[1]); segs.push(L); total+=L;
+  }
+  S.ammo.shift(); S.shots++;
+  S.fly={path:sim.path, segs, total, d:0, k, cell:sim.cell, bounce:0, x:CX, y:CY};
+  S.guide=null; ammoUpd(true); Sfx.shoot();
+  return true;
+}
+function flyStep(dt){
+  const f=S.fly; f.d+=CONFIG.speed*dt;
+  let d=f.d, i=0;
+  while(i<f.segs.length && d>f.segs[i]){ d-=f.segs[i]; i++; }
+  if(i>=f.segs.length){ land(f.cell,f.k); S.fly=null; return; }
+  if(i>f.bounce){ f.bounce=i; Sfx.wall(); }              // one clack per wall, not per frame
+  const a=f.path[i], b=f.path[i+1], t=f.segs[i]?d/f.segs[i]:0;
+  f.x=a[0]+(b[0]-a[0])*t; f.y=a[1]+(b[1]-a[1])*t;
+}
+/** the bubble sticks visually first, then resolves — without the beat the pop
+    reads as if the shot never landed */
+function land(cell,k){
+  S.landed={cell,k,t:0};
+  Sfx.stick(); vibe(8);
+  later(CONFIG.settle,()=>{ const l=S.landed; S.landed=null; if(l) resolve(l.cell,l.k); });
+}
+function resolve(cell,k){
+  const res=applyShot(S.g,cell,k);
+  S.seq++; S.cache=null;
+  if(k===BOMB){ Sfx.bomb(); S.shake=Math.max(S.shake,13); vibe([25,30,25]); burst(cellX(cell[0],cell[1]),cellY(cell[0]),'#ffd23f',26); }
+
+  res.popped.forEach((p,i)=>{
+    if(p[2]===PUP) return;                                // the pup gets its own beat
+    const x=cellX(p[0],p[1]), y=cellY(p[0]);
+    burst(x,y,COLORS[p[2]]?COLORS[p[2]].body:'#fff',7);
+    if(k!==BOMB) Sfx.pop(i);
+  });
+  S.pops+=res.popped.length; S.totalPops+=res.popped.length;
+
+  for(const d of res.dropped){
+    if(d[2]===PUP) continue;
+    S.fallers.push({x:cellX(d[0],d[1]), y:cellY(d[0]), vx:rnd(-70,70), vy:rnd(-140,-20),
+                    k:d[2], rot:rnd(0,7), vr:rnd(-7,7), alpha:1});
+  }
+  if(res.dropped.length){
+    const n=res.dropped.length;
+    S.drops+=n; S.totalDrops+=n; S.bestDrop=Math.max(S.bestDrop,n);
+    Sfx.drop(n); S.shake=Math.max(S.shake, Math.min(4+n*0.6,14)); vibe([12,25,12]);
+    if(!res.freed) toast(n>=8?'AVALANCHE! +'+n:'DROP! +'+n,'drop');
+  }
+  if(res.freed) freePup(res);
+  else if(!S.ammo.length) later(0.25,refill);            // ad-safety: never out of shots
+}
+/** out of ammo with the pup still trapped -> three free shots, the first a bomb.
+    The bomb is what makes the rescue a guarantee and not a hope: it clears a
+    radius regardless of colour, so it can always sever a support. */
+function refill(){
+  if(S.mode!=='play' || S.ammo.length) return;
+  const tc=topColors(S.g,2);
+  while(tc.length<2) tc.push(tc[0]!==undefined?tc[0]:0);
+  S.ammo=[BOMB,tc[0],tc[1]]; S.refills++;
+  S.cache=null; Sfx.refill(); toast('+3 FREE SHOTS','help'); ammoUpd(true);
+  S.reload=CONFIG.refillPause;
+}
+function freePup(res){
+  const cell=(res.popped.concat(res.dropped)).find(p=>p[2]===PUP);
+  const x=cell?cellX(cell[0],cell[1]):CX, y=cell?cellY(cell[0]):BY;
+  S.pup={x,y,vx:rnd(-40,40),vy:-90,t:0,mode:'fall',sc:1};
+  S.mode='clear'; S.pups++;
+  later(CONFIG.pupBurst,()=>{
+    if(!S.pup) return;
+    S.pup.mode='free'; S.pup.t=0; S.pup.vy=-260;
+    burst(S.pup.x,S.pup.y,'#a8e9ff',24); confetti(S.pup.x,S.pup.y);
+    Sfx.win(); vibe([25,40,25]); toast('PUP RESCUED!','good');
+  });
+  later(CONFIG.winPause,()=>{
+    if(S.li+1<LEVELS.length) loadLevel(S.li+1); else showEnd();
+  });
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+function pointerDown(e){
+  Sfx.ensure(); S.lastInput=S.time; S.handPh=0; S.autoOn=false; S.autoFireAt=0;   // player takes over
+  if(S.mode!=='play') return;
+  const p=toScene(e.clientX,e.clientY);
+  S.aiming=true; setAim(p[0],p[1]);
+}
+function pointerMove(e){
+  if(!S.aiming || S.mode!=='play') return;
+  const p=toScene(e.clientX,e.clientY); setAim(p[0],p[1]);
+}
+function pointerUp(){
+  if(!S.aiming) return;
+  S.aiming=false; S.lastInput=S.time;
+  if(S.mode==='play'){ if(!fire()) S.guide=null; S.tip=0; }
+}
+cv.addEventListener('pointerdown',pointerDown);
+addEventListener('pointermove',pointerMove);      // on window: the HUD buttons are
+addEventListener('pointerup',pointerUp);          // pointer-events:auto and would eat the drag
+addEventListener('pointercancel',pointerUp);
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would break the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* =========================================================================
+   PARTICLES
+   ========================================================================= */
+function burst(x,y,color,n){
+  for(let i=0;i<n;i++) S.parts.push({x,y,vx:rnd(-260,260),vy:rnd(-300,120),
+    life:rnd(.30,.62),age:0,color,r:rnd(2.5,6),grav:900,kind:'dot'});
+}
+function confetti(x,y){
+  const cols=['#ffd23f','#42d76c','#ff6b9d','#5ad2ff','#ff9f43'];
+  for(let i=0;i<95;i++) S.parts.push({x:x+rnd(-60,60),y,vx:rnd(-400,400),vy:rnd(-820,-300),
+    life:rnd(.9,1.8),age:0,color:cols[i%cols.length],r:rnd(3,6),grav:980,rot:rnd(0,7),vr:rnd(-9,9),kind:'conf'});
+}
+function updateParts(dt){
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt;
+    if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+    if(p.rot!==undefined) p.rot+=p.vr*dt;
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+function ammoUpd(pop){
+  const n=S.ammo.length, g=$('goal');
+  $('goalTxt').textContent = n===1 ? '1 SHOT' : n+' SHOTS';
+  g.classList.toggle('low', n<=2);
+  if(pop){ g.classList.remove('pop'); void g.offsetWidth; g.classList.add('pop'); }
+}
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  later(1.4,()=>t.classList.remove('show'));
+}
+function showEnd(){
+  S.mode='end';
+  $('endPups').textContent='🐶'.repeat(Math.max(S.pups,1));
+  $('endSub').textContent = S.pups>=LEVELS.length
+    ? `${S.totalPops} bubbles popped, ${S.totalDrops} dropped — best chunk ${S.bestDrop} in one shot.`
+    : `${S.totalPops} bubbles popped. ${LEVELS.length-S.pups} pup${LEVELS.length-S.pups>1?'s are':' is'} still trapped.`;
+  $('end').querySelector('h1').textContent = S.pups>=LEVELS.length ? 'All pups rescued!' : 'Nice popping!';
+  $('end').classList.add('show');
+}
+
+/* =========================================================================
+   UPDATE — everything on sim time
+   ========================================================================= */
+function update(dt){
+  S.time+=dt;
+  for(let i=S.timers.length-1;i>=0;i--){                    // sim-time scheduler
+    if(S.time>=S.timers[i].t){ const fn=S.timers[i].fn; S.timers.splice(i,1); fn(); }
+  }
+  updateParts(dt);
+
+  for(let i=S.fallers.length-1;i>=0;i--){                   // detached bubbles
+    const f=S.fallers[i]; f.vy+=CONFIG.fallGrav*dt; f.x+=f.vx*dt; f.y+=f.vy*dt; f.rot+=f.vr*dt;
+    if(f.y>SH+90) S.fallers.splice(i,1);
+  }
+  if(S.pup){
+    const p=S.pup; p.t+=dt;
+    if(p.mode==='fall'){ p.vy+=CONFIG.fallGrav*0.55*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; }
+    else { p.vy+=1500*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+           if(p.y>markFloor){ p.y=markFloor; p.vy=-Math.abs(p.vy)*0.42; }  // little victory bounce
+           p.sc=1+0.55*Math.exp(-p.t*3)*Math.sin(p.t*16); }
+  }
+  if(S.shake>0) S.shake=Math.max(0,S.shake-dt*26);
+  if(S.reload>0) S.reload=Math.max(0,S.reload-dt);
+  if(S.landed) S.landed.t+=dt;
+  if(S.fly) flyStep(dt);
+  if(S.tip>0 && S.shots>0) S.tip=Math.max(0,S.tip-dt*2.2);
+  if(S.mode==='play' && S.time-S.lastInput>=CONFIG.idleHint) S.handPh+=dt;
+
+  if(S.mode==='play'){
+    if(!S.ammo.length && !S.fly && !S.landed) refill();     // belt for the ammo path
+
+    // ad-safety: left alone, the ad aims and plays itself to the end card
+    if(S.autoOn || S.time-S.lastInput>CONFIG.idleAuto){
+      S.autoOn=true;
+      if(canShoot()){
+        if(!S.autoFireAt){
+          const b=bestNow();
+          if(b){ S.aim=b.ang; S.guide={path:b.path,cell:b.cell}; S.autoFireAt=S.time+CONFIG.autoAim; }
+        }else if(S.time>=S.autoFireAt){ S.autoFireAt=0; fire(); S.reload=CONFIG.autoStep; }
+      }
+    }
+  }
+  if(S.time>CONFIG.autoEnd && S.mode!=='end') showEnd();
+}
+
+/* =========================================================================
+   DRAWING
+   ========================================================================= */
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,vh);
+  g.addColorStop(0,'#1b2b3f'); g.addColorStop(0.55,'#132033'); g.addColorStop(1,'#0b1119');
+  ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+}
+/** the tank the bubbles hang in: ceiling rail plus the two bounce walls, so a
+    banked shot has something visible to bank off */
+function drawFrame(){
+  ctx.fillStyle='rgba(255,255,255,.035)';
+  roundRect(WALL_L,BY-6,WALL_R-WALL_L,TANK_B-BY,26); ctx.fill();
+  const g=ctx.createLinearGradient(0,BY-26,0,BY);
+  g.addColorStop(0,'#4e6280'); g.addColorStop(1,'#25334a');
+  ctx.fillStyle=g; roundRect(WALL_L-12,BY-26,WALL_R-WALL_L+24,28,9); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.35)';
+  for(let x=WALL_L+6;x<WALL_R;x+=48){ ctx.beginPath(); ctx.arc(x,BY-12,3.4,0,7); ctx.fill(); }
+  ctx.fillStyle='rgba(255,255,255,.08)';
+  roundRect(WALL_L-9,BY-6,9,TANK_B-8-BY,4); ctx.fill();
+  roundRect(WALL_R,BY-6,9,TANK_B-8-BY,4); ctx.fill();
+}
+function glyph(k,x,y,s,alpha){
+  const G=COLORS[k].glyph;
+  ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+  ctx.globalAlpha=alpha; ctx.fillStyle='rgba(10,16,26,.55)'; ctx.strokeStyle='rgba(10,16,26,.55)';
+  ctx.lineWidth=5; ctx.lineCap='round';
+  if(G==='dot'){ ctx.beginPath(); ctx.arc(0,0,9,0,7); ctx.fill(); }
+  if(G==='ring'){ ctx.lineWidth=4.5; ctx.beginPath(); ctx.arc(0,0,10,0,7); ctx.stroke(); }
+  if(G==='tri'){ ctx.beginPath(); ctx.moveTo(0,-11); ctx.lineTo(10,7); ctx.lineTo(-10,7); ctx.closePath(); ctx.fill(); }
+  if(G==='cross'){ ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(9,0); ctx.moveTo(0,-9); ctx.lineTo(0,9); ctx.stroke(); }
+  if(G==='star'){ ctx.beginPath();
+    for(let i=0;i<8;i++){ const a=i*Math.PI/4-Math.PI/2, rr=i%2?4.5:12;
+      const px=Math.cos(a)*rr, py=Math.sin(a)*rr; i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+    ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+}
+function drawBubble(x,y,k,s,alpha,rot){
+  s=s||1; alpha=alpha===undefined?1:alpha;
+  ctx.save(); ctx.globalAlpha=alpha; ctx.translate(x,y); if(rot) ctx.rotate(rot);
+  const r=R*s;
+  if(k===BOMB){
+    const g=ctx.createRadialGradient(-r*0.3,-r*0.35,r*0.15,0,0,r);
+    g.addColorStop(0,'#6b7690'); g.addColorStop(0.5,'#2b3345'); g.addColorStop(1,'#11151f');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();
+    ctx.strokeStyle='rgba(255,210,63,.9)'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(0,0,r*0.55,0,7); ctx.stroke();
+    ctx.fillStyle='#ffd23f';
+    for(let i=0;i<6;i++){ const a=i*Math.PI/3+S.time*1.6;
+      ctx.beginPath(); ctx.arc(Math.cos(a)*r*0.8,Math.sin(a)*r*0.8,3.2,0,7); ctx.fill(); }
+  }else{
+    const col=COLORS[k];
+    const g=ctx.createRadialGradient(-r*0.32,-r*0.38,r*0.1,0,0,r);
+    g.addColorStop(0,col.hi); g.addColorStop(0.45,col.body); g.addColorStop(1,col.dark);
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.30)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,r-1,0,7); ctx.stroke();
+    glyph(k,0,0,s,0.85);
+    ctx.fillStyle='rgba(255,255,255,.55)';                      // specular
+    ctx.beginPath(); ctx.ellipse(-r*0.33,-r*0.4,r*0.26,r*0.17,-0.7,0,7); ctx.fill();
+  }
+  ctx.restore();
+}
+/** the pup: drawn once, used inside its bubble and again after it bursts out */
+function drawPup(x,y,s){
+  ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+  ctx.fillStyle='#c98b4b';                                      // ears
+  ctx.beginPath(); ctx.ellipse(-19,-4,7.5,15,0.35,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(19,-4,7.5,15,-0.35,0,7); ctx.fill();
+  const g=ctx.createRadialGradient(-6,-8,3,0,0,24);
+  g.addColorStop(0,'#ffe6bd'); g.addColorStop(1,'#e0ac6d');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,20,0,7); ctx.fill();
+  ctx.fillStyle='#fff3dd'; ctx.beginPath(); ctx.ellipse(0,9,11,8,0,0,7); ctx.fill();   // muzzle
+  ctx.fillStyle='#26303f';
+  ctx.beginPath(); ctx.arc(-7.5,-3,3.1,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(7.5,-3,3.1,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0,5.5,3.4,2.6,0,0,7); ctx.fill();                        // nose
+  ctx.strokeStyle='#26303f'; ctx.lineWidth=1.8; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(0,8); ctx.lineTo(0,11.5);
+  ctx.moveTo(0,11.5); ctx.arc(-3,11.5,3,0,Math.PI); ctx.moveTo(0,11.5); ctx.arc(3,11.5,3,0,Math.PI); ctx.stroke();
+  ctx.restore();
+}
+/** the trapped pup reads as "inside a bubble", so it is obviously not a colour */
+function drawPupBubble(x,y,alpha){
+  ctx.save(); ctx.globalAlpha=alpha===undefined?1:alpha;
+  const bob=Math.sin(S.time*2.4)*2;
+  ctx.translate(x,y+bob);
+  const r=R*1.06;
+  ctx.save(); ctx.shadowColor='rgba(140,225,255,.75)'; ctx.shadowBlur=16;
+  const g=ctx.createRadialGradient(-r*0.3,-r*0.35,r*0.1,0,0,r);
+  g.addColorStop(0,'rgba(230,250,255,.92)'); g.addColorStop(0.55,'rgba(140,215,245,.42)'); g.addColorStop(1,'rgba(60,140,190,.62)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();
+  ctx.restore();
+  drawPup(0,1,0.78);
+  ctx.strokeStyle='rgba(255,255,255,.75)'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.arc(0,0,r-1,0,7); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.6)';
+  ctx.beginPath(); ctx.ellipse(-r*0.34,-r*0.4,r*0.24,r*0.15,-0.7,0,7); ctx.fill();
+  ctx.restore();
+}
+function drawGrid(){
+  for(let r=0;r<MAXR;r++) for(let c=0;c<cols(r);c++){
+    const k=S.g[r][c]; if(k==null) continue;
+    if(k===PUP) drawPupBubble(cellX(r,c),cellY(r));
+    else drawBubble(cellX(r,c),cellY(r),k);
+  }
+}
+/** dashed prediction with the bounces already resolved, plus a ghost at the
+    landing cell — the two things that sell the mechanic in the first second */
+function drawGuide(g,alpha){
+  if(!g||!g.path) return;
+  ctx.save(); ctx.globalAlpha=alpha;
+  ctx.strokeStyle='#bfe9ff'; ctx.lineWidth=4; ctx.lineCap='round'; ctx.setLineDash([12,16]);
+  ctx.lineDashOffset=-S.time*70;
+  ctx.beginPath(); ctx.moveTo(g.path[0][0],g.path[0][1]);
+  for(let i=1;i<g.path.length;i++) ctx.lineTo(g.path[i][0],g.path[i][1]);
+  ctx.stroke(); ctx.setLineDash([]);
+  for(let i=1;i<g.path.length-1;i++){                      // mark each wall bounce
+    ctx.fillStyle='rgba(191,233,255,.55)';
+    ctx.beginPath(); ctx.arc(g.path[i][0],g.path[i][1],6,0,7); ctx.fill();
+  }
+  if(g.cell){
+    const x=cellX(g.cell[0],g.cell[1]), y=cellY(g.cell[0]);
+    ctx.strokeStyle='rgba(255,255,255,.75)'; ctx.lineWidth=3; ctx.setLineDash([7,7]);
+    ctx.beginPath(); ctx.arc(x,y,R-2,0,7); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+function drawCannon(){
+  const k=S.ammo.length?S.ammo[0]:null;
+  ctx.save();
+  ctx.translate(CX,CY);
+  ctx.save(); ctx.rotate(S.aim);                            // barrel
+  const g=ctx.createLinearGradient(-26,0,26,0);
+  g.addColorStop(0,'#3b4a63'); g.addColorStop(0.45,'#8496b4'); g.addColorStop(1,'#33405a');
+  ctx.fillStyle=g; roundRect(-25,-72,50,86,16); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.16)'; roundRect(-15,-66,10,72,5); ctx.fill();
+  ctx.restore();
+  const b=ctx.createRadialGradient(-10,-12,6,0,0,50);
+  b.addColorStop(0,'#5c6d8c'); b.addColorStop(1,'#212b3d');
+  ctx.fillStyle=b; ctx.beginPath(); ctx.arc(0,0,46,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,44,0,7); ctx.stroke();
+  ctx.restore();
+  if(k!=null && !S.fly && S.mode!=='end') drawBubble(CX,CY,k,1,S.reload>0?0.4:1);
+  if(S.ammo.length>1){                                      // next-up holder
+    ctx.save(); ctx.globalAlpha=0.9;
+    ctx.fillStyle='rgba(255,255,255,.08)'; ctx.beginPath(); ctx.arc(178,CY+22,38,0,7); ctx.fill();
+    ctx.fillStyle='#7d8ba3'; ctx.font='700 14px system-ui'; ctx.textAlign='center';
+    ctx.fillText('NEXT',178,CY+80);
+    ctx.restore();
+    drawBubble(178,CY+22,S.ammo[1],0.72,0.92);
+  }
+}
+function drawFallers(){
+  for(const f of S.fallers) drawBubble(f.x,f.y,f.k,1,clamp((SH+90-f.y)/240,0,1),f.rot);
+}
+function drawPupEntity(){
+  if(!S.pup) return;
+  const p=S.pup;
+  if(p.mode==='fall') drawPupBubble(p.x,p.y);
+  else{
+    ctx.save(); ctx.globalAlpha=clamp(1.2-p.t*0.12,0,1);
+    drawPup(p.x,p.y,1.55*p.sc);
+    ctx.restore();
+  }
+}
+function drawParts(){
+  for(const p of S.parts){
+    const a=1-p.age/p.life;
+    ctx.globalAlpha=a; ctx.fillStyle=p.color;
+    if(p.kind==='conf'){ ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r); ctx.restore(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+function drawHand(){
+  if(S.mode!=='play' || S.time-S.lastInput<CONFIG.idleHint || S.fly || S.landed) return;
+  const b=bestNow(); if(!b) return;
+  const k=(Math.sin(S.handPh*4)+1)/2;
+  drawGuide({path:b.path,cell:b.cell}, 0.30+0.32*k);
+  ctx.save();
+  ctx.translate(CX+Math.sin(b.ang)*66, CY-Math.cos(b.ang)*66+18+k*10);
+  ctx.font='52px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=10;
+  ctx.fillText('👆',0,0);
+  ctx.restore();
+}
+function drawTip(){
+  if(S.li>0 || S.tip<=0) return;
+  ctx.save(); ctx.globalAlpha=S.tip*0.85;
+  ctx.fillStyle='#9fb0c6'; ctx.font='700 23px system-ui'; ctx.textAlign='center';
+  ctx.fillText('DRAG TO AIM  ·  RELEASE TO FIRE', 360, 1200);
+  ctx.restore();
+}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);                 // draw in CSS px, sharp on retina
+  drawBG();
+  const sh=S.shake, shx=sh?rnd(-sh,sh)*scale:0, shy=sh?rnd(-sh,sh)*scale:0;
+  ctx.save(); ctx.translate(ox+shx,oy+shy); ctx.scale(scale,scale);
+  drawFrame();
+  drawGrid();
+  drawFallers();
+  if(S.landed){ const l=S.landed; drawBubble(cellX(l.cell[0],l.cell[1]),cellY(l.cell[0]),l.k,1+0.12*Math.sin(l.t*40)); }
+  if(S.aiming && S.mode==='play') drawGuide(S.guide,0.85);
+  else if(S.autoOn && S.autoFireAt && S.mode==='play') drawGuide(S.guide,0.6);
+  drawCannon();
+  if(S.fly) drawBubble(S.fly.x,S.fly.y,S.fly.k);
+  drawPupEntity();
+  drawParts();
+  drawHand();
+  drawTip();
+  ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt);
+  draw();
+}
+
+/* MRAID-aware start */
+function start(){ loadLevel(0); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* =========================================================================
+   DEBUG HOOKS — headless stepping and level verification
+   ========================================================================= */
+window.__game={ S, CONFIG, LEVELS, COLORS, PUP, BOMB,
+  load:loadLevel, end:showEnd, best:bestNow, sim:simShot, grid:gridFromLevel,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); draw(); },
+  aim:a=>{ S.aim=clamp(a,-ANGMAX,ANGMAX); S.guide=simShot(S.aim,S.g); },
+  fire,
+  shootAt:a=>{ S.aim=clamp(a,-ANGMAX,ANGMAX); return fire(); },
+  /** structural check on a level as authored: nothing pre-detached, pup attached */
+  audit:(li)=>{
+    const out=[];
+    const list = li===undefined ? LEVELS.map((_,i)=>i) : [li];
+    for(const i of list){
+      const g=gridFromLevel(i), keep=ceilingSet(g);
+      let n=0, loose=[], pup=null;
+      for(let r=0;r<MAXR;r++) for(let c=0;c<cols(r);c++){
+        if(g[r][c]==null) continue;
+        n++;
+        if(g[r][c]===PUP) pup=[r,c];
+        if(!keep[key(r,c)]) loose.push([r,c]);
+      }
+      out.push({level:i+1, bubbles:n, pup, pupAttached: !!(pup&&keep[key(pup[0],pup[1])]),
+                preDetached:loose, ammo:LEVELS[i].ammo});
+    }
+    return out;
+  },
+  /** stress test: a deliberately bad player firing at random angles, with the
+      free-refill rescue on. This is what proves the safety net — the ad has to
+      reach the rescue even when nobody aims. Deterministic LCG, so a failing
+      trial can be replayed. */
+  stress:(li=0,trials=300,maxShots=40,seed=12345)=>{
+    let z=seed>>>0; const rand=()=>{ z=(z*1664525+1013904223)>>>0; return z/4294967296; };
+    let ok=0, sum=0, worst=0, bombs=0;
+    for(let t=0;t<trials;t++){
+      const g=gridFromLevel(li); let ammo=ammoOf(li), n=0, done=false, nb=0;
+      for(let i=1;i<=maxShots;i++){
+        n=i;
+        if(!ammo.length){ const tc=topColors(g,2); while(tc.length<2) tc.push(tc[0]!==undefined?tc[0]:0);
+          ammo=[BOMB,tc[0],tc[1]]; }
+        const k=ammo.shift(); if(k===BOMB) nb++;
+        const sh=simShot(-ANGMAX+2*ANGMAX*rand(),g);
+        if(!sh.cell) continue;
+        if(applyShot(g,sh.cell,k).freed){ done=true; break; }
+      }
+      if(done){ ok++; sum+=n; worst=Math.max(worst,n); bombs+=nb; }
+    }
+    return {level:li+1, trials, completed:ok, rate:+(ok/trials).toFixed(3),
+            avgShots:+(sum/Math.max(ok,1)).toFixed(1), worstShots:worst,
+            avgBombsUsed:+(bombs/Math.max(ok,1)).toFixed(2)};
+  },
+  /** play a level headlessly with the autopilot's own shot search, including
+      the free-refill rescue. Returns the shot log — this is what proves a
+      level is finishable, and that the ad can always reach the end card. */
+  solve:(li=0,maxShots=30)=>{
+    const g=gridFromLevel(li); let ammo=ammoOf(li), refills=0, log=[];
+    const demo=LEVELS[li].demo||0;
+    for(let s=1;s<=maxShots;s++){
+      if(!ammo.length){ const tc=topColors(g,2); while(tc.length<2) tc.push(tc[0]||0);
+        ammo=[BOMB,tc[0],tc[1]]; refills++; log.push('refill'); }
+      const k=ammo.shift(), b=bestShot(g,k, s-1<demo);
+      if(!b||!b.cell){ log.push('no shot for k='+k); return {level:li+1,freed:false,shots:s-1,refills,log}; }
+      const res=applyShot(g,b.cell,k);
+      log.push(`${s}: k=${k} -> [${b.cell}] pop ${res.popped.length} drop ${res.dropped.length}`);
+      if(res.freed) return {level:li+1,freed:true,shots:s,refills,log};
+    }
+    return {level:li+1,freed:false,shots:maxShots,refills,log};
+  },
+};
+</script>
+</body>
+</html>

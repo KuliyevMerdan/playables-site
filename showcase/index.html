@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playable Ads — Portfolio</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:#0d0e18; color:#e8eaf6;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  body { min-height:100vh;
+    background:
+      radial-gradient(ellipse 900px 500px at 50% -100px, rgba(94,84,255,.18), transparent 70%),
+      radial-gradient(ellipse 700px 400px at 85% 100%, rgba(66,215,108,.06), transparent 70%),
+      #0d0e18; }
+
+  header { max-width:1280px; margin:0 auto; padding:64px 24px 36px; text-align:center; }
+  .kicker { display:inline-block; padding:5px 16px; border-radius:16px; font-size:12px; font-weight:800;
+    letter-spacing:3px; color:#0d0e18; background:linear-gradient(180deg,#fff,#cfd6e6); }
+  h1 { margin-top:16px; font-size:clamp(34px,6vw,58px); font-weight:900; letter-spacing:1px;
+    background:linear-gradient(180deg,#fff 30%,#8b93c9); -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent; }
+  .sub { margin-top:12px; color:#a9b3e0; font-size:17px; line-height:1.5; }
+  .chips { margin-top:22px; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+  .chip { padding:7px 15px; border-radius:18px; font-size:13px; font-weight:700; color:#cdd4f5;
+    background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); }
+  .chip b { color:#ffd54a; }
+
+  main { max-width:1280px; margin:0 auto; padding:12px 24px 40px;
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:26px; }
+  @media (min-width:1240px){ main{ grid-template-columns:repeat(4,1fr); } }
+
+  .card { display:flex; flex-direction:column; border-radius:22px; overflow:hidden;
+    background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 16px 40px rgba(0,0,0,.45); transition:transform .25s, box-shadow .25s; }
+  .card:hover { transform:translateY(-4px); box-shadow:0 24px 54px rgba(0,0,0,.6); }
+  .cardHead { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:16px 16px 12px; }
+  .cardHead h2 { font-size:19px; font-weight:900; letter-spacing:.5px; }
+  .tag { flex-shrink:0; padding:4px 11px; border-radius:13px; font-size:11px; font-weight:800; letter-spacing:1px;
+    text-transform:uppercase; color:#0d0e18; }
+  .tag.physics { background:#ffb300; } .tag.match { background:#ff6b9d; }
+  .tag.d3     { background:#7ee0ff; } .tag.brand { background:#42d76c; }
+  .tag.story  { background:#b9a6ff; } .tag.puzzle { background:#ff9a5c; }
+  .tag.traffic{ background:#ffd23f; } .tag.bubble { background:#5ad2ff; }
+  .tag.merge  { background:#ffb45c; } .tag.word { background:#ffd98a; }
+  .tag.svc    { background:#ff7a45; } .tag.phys { background:#ffb020; }
+
+  .phone { position:relative; margin:0 auto; width:min(252px,80%); border-radius:26px; padding:9px;
+    background:#05060b; border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 30px rgba(0,0,0,.5); }
+  .phone .notch { position:absolute; top:9px; left:50%; transform:translateX(-50%); width:36%; height:14px;
+    border-radius:0 0 12px 12px; background:#05060b; z-index:2; }
+  .phone iframe { display:block; width:100%; aspect-ratio:9/17; border:0; border-radius:18px; background:#000; }
+
+  .cardBody { padding:14px 16px 16px; display:flex; flex-direction:column; gap:12px; flex:1; }
+  .desc { color:#a9b3e0; font-size:13.5px; line-height:1.55; flex:1; }
+  .badges { display:flex; flex-wrap:wrap; gap:6px; }
+  .badge { padding:3px 9px; border-radius:9px; font-size:11px; font-weight:700; color:#8fd8ff;
+    background:rgba(94,178,255,.10); border:1px solid rgba(94,178,255,.25); }
+  .cardFoot { display:flex; align-items:center; justify-content:space-between; }
+  .size { font-size:12.5px; font-weight:800; color:#ffd54a; }
+  .actions { display:flex; gap:8px; }
+  .actions a, .actions button { cursor:pointer; border:none; text-decoration:none; padding:8px 14px;
+    border-radius:12px; font-size:12.5px; font-weight:800; color:#e8eaf6;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); transition:background .2s; }
+  .actions a:hover, .actions button:hover { background:rgba(255,255,255,.16); }
+  .actions a.open { color:#0d0e18; background:linear-gradient(180deg,#42d76c,#149c46); border:none; }
+
+  footer { max-width:1280px; margin:0 auto; padding:10px 24px 56px; text-align:center;
+    color:#8b93ad; font-size:14px; line-height:1.8; }
+  footer a { color:#8fd8ff; text-decoration:none; }
+  footer .note { font-size:12.5px; color:#5d6480; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="kicker">PORTFOLIO</span>
+  <h1>Playable Ads</h1>
+  <p class="sub">Thirteen self-contained playables — every one a single HTML file with zero libraries,<br>
+    zero external assets and synthesized audio. Live and fully interactive below.</p>
+  <div class="chips">
+    <span class="chip"><b>13</b> playables</span>
+    <span class="chip"><b>0</b> dependencies</span>
+    <span class="chip"><b>0</b> asset files</span>
+    <span class="chip"><b>22–47 KB</b> each</span>
+    <span class="chip">MRAID-ready</span>
+    <span class="chip">Meta · AppLovin · Unity · ironSource</span>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <div class="cardHead"><h2>Pull the Pin</h2><span class="tag physics">Physics</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../pull-the-pin/index.html" title="Pull the Pin" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Gold-vs-lava pin-pulling puzzle, 3 levels + end card. Dependency-free verlet
+        ball physics with segment collisions, sliding pins, context-aware tutorial hand,
+        pitch-escalating pickup SFX, screen shake &amp; haptics.</p>
+      <div class="badges"><span class="badge">Canvas 2D</span><span class="badge">Verlet physics</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">27 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../pull-the-pin/index.html" target="pa-demo-pull-the-pin">Open ⤢</a></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardHead"><h2>Gem Blast</h2><span class="tag match">Match-3</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../match-3/index.html" title="Gem Blast" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Juicy 7×7 match-3: rockets from 4-matches, cascade multipliers, combo words.
+        Headless-testable logic core; the goal is balanced by simulating a weak player, so the ad
+        is always winnable. Distinct gem shapes per color for colorblind players.</p>
+      <div class="badges"><span class="badge">Canvas 2D</span><span class="badge">Sim-tuned balance</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">26 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../match-3/index.html" target="pa-demo-match-3">Open ⤢</a></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardHead"><h2>Sky Tower</h2><span class="tag d3">3D · WebGL</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../stack-3d/index.html" title="Sky Tower" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">True-3D stack game in <b>raw WebGL — no three.js</b>: hand-rolled matrix math,
+        one cube mesh, lambert shading. Slice the overhang, chain perfects, build to 12. Falling
+        tumbling cut pieces and a 2D juice layer projected over the 3D scene.</p>
+      <div class="badges"><span class="badge">Raw WebGL</span><span class="badge">Micro-engine</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">22 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../stack-3d/index.html" target="pa-demo-stack-3d">Open ⤢</a></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardHead"><h2>Stride Studio</h2><span class="tag brand">Brand</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../sneaker-studio/index.html" title="Stride Studio" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Non-game brand playable: a sneaker configurator for a fictional store app.
+        Color 4 zones of a live vector sneaker from curated palettes — the end card shows
+        <b>your exact colorway</b> with price and an order CTA. E-commerce funnel, not a game.</p>
+      <div class="badges"><span class="badge">Canvas vector art</span><span class="badge">DOM UI</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">25 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../sneaker-studio/index.html" target="pa-demo-sneaker-studio">Open ⤢</a></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardHead"><h2>Unread</h2><span class="tag story">Chat Story</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../chat-story/index.html" title="Unread" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Trend-format interactive chat story: a thriller conversation with timed branching
+        choices, typing indicators, a canvas-drawn "doorcam photo" and a glitch cliffhanger. The end
+        card recaps <b>your own choices</b>. Auto-picks on timeout, so the ad always completes.</p>
+      <div class="badges"><span class="badge">Branching script engine</span><span class="badge">DOM UI</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">26 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../chat-story/index.html" target="pa-demo-chat-story">Open ⤢</a></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardHead"><h2>Bolt Out</h2><span class="tag puzzle">Screw Puzzle</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../bolt-out/index.html" title="Bolt Out" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Unscrew colour-coded bolts to drop overlapping steel plates and crack the hatch.
+        Three slots hold three bolts each, so the real puzzle is <b>slot management</b> plus which
+        plate is on top. Jam yourself and a free extra slot flies in — the ad can never dead-end.</p>
+      <div class="badges"><span class="badge">Canvas 2D</span><span class="badge">Polygon layering</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">34 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../bolt-out/index.html" target="pa-demo-bolt-out">Open ⤢</a></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardHead"><h2>Crowd Rush</h2><span class="tag d3">3D Runner</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../crowd-rush/index.html" title="Crowd Rush" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Swipe to steer a whole crowd through <b>×2 / ÷2</b> gates, dodge spinning saws and
+        spend runners to bridge a pit — then ram a brick wall where every three runners break one brick.
+        True 3D on <b>raw WebGL</b>: the entire crowd is three instanced draw calls, no three.js.</p>
+      <div class="badges"><span class="badge">Raw WebGL</span><span class="badge">Instanced crowd</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">40 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../crowd-rush/index.html" target="pa-demo-crowd-rush">Open ⤢</a></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardHead"><h2>Jam Out</h2><span class="tag traffic">Parking Jam</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../jam-out/index.html" title="Jam Out" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Tap a car and it drives straight out of the jammed lot — if nothing is in its
+        way. Order is the whole puzzle, and honking at a blocker costs a star. The last lot ends in a
+        <b>real deadlock</b>, two cars nose to nose, and a free crane lifts one out.</p>
+      <div class="badges"><span class="badge">Canvas 2D</span><span class="badge">Static dependency graph</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">36 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../jam-out/index.html" target="pa-demo-jam-out">Open ⤢</a></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="cardHead"><h2>Bubble Pop</h2><span class="tag bubble">Bubble Shooter</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../bubble-pop/index.html" title="Bubble Pop" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Drag to aim — the prediction line resolves <b>wall bounces</b> and shows a ghost
+        bubble in the exact cell the shot lands in. Three of a colour pop, and anything cut off from the
+        ceiling avalanches away. The trapped pup is not a colour, so <b>the drop is the win condition</b>.</p>
+      <div class="badges"><span class="badge">Canvas 2D</span><span class="badge">Hex grid + bounce prediction</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">45 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../bubble-pop/index.html" target="pa-demo-bubble-pop">Open ⤢</a></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="cardHead"><h2>Merge Bakery</h2><span class="tag merge">Merge-2</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../merge-bakery/index.html" title="Merge Bakery" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Drag a pastry onto its twin and it becomes the next one up — dough, bun,
+        croissant, cupcake, cake. A merged item that lands beside its own twin <b>merges again on its
+        own</b>, and every filled order <b>upgrades the oven</b> a tier, which is what keeps an
+        exponential economy inside a 23-second ad.</p>
+      <div class="badges"><span class="badge">Canvas 2D</span><span class="badge">Escalating generator</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">45 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../merge-bakery/index.html" target="pa-demo-merge-bakery">Open ⤢</a></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="cardHead"><h2>Word Harbor</h2><span class="tag word">Word Swipe</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../word-harbor/index.html" title="Word Harbor" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Swipe the letter ring to spell words into a crossword; anything valid that is
+        not on the board drops into the bonus chest. <b>No dictionary ships</b> — every word is an
+        anagram of the dock's own letters, so all three docks of word data cost <b>963 bytes</b>. Ships English and Russian.</p>
+      <div class="badges"><span class="badge">Canvas 2D</span><span class="badge">Dictionary-free word list</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">41 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../word-harbor/index.html" target="pa-demo-word-harbor">Open ⤢</a></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="cardHead"><h2>Tap Eats</h2><span class="tag svc">Brand · App Flow</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../tap-eats/index.html" title="Tap Eats" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">A <b>non-game brand playable</b>: the whole flow of a delivery app in three taps —
+        pick a dish, add extras, place the order, then watch the courier ride a live route to your door.
+        The end card is a <b>receipt of the order you actually built</b>.</p>
+      <div class="badges"><span class="badge">Canvas UI</span><span class="badge">Audited layout + totals</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">43 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../tap-eats/index.html" target="pa-demo-tap-eats">Open ⤢</a></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="cardHead"><h2>Demolition Row</h2><span class="tag phys">Rigid-Body Physics</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../demolition-row/index.html" title="Demolition Row" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Place two charges on a condemned frame and bring it down below the line — without
+        dropping it on the neighbour. Runs on a <b>rigid-body solver written from scratch</b>: oriented
+        boxes, SAT contacts, split impulses, sleeping. Fully deterministic, so every charge pair is
+        enumerated to rest as a test.</p>
+      <div class="badges"><span class="badge">2D physics engine</span><span class="badge">Deterministic solver</span>
+        <span class="badge">WebAudio synth</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">47 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../demolition-row/index.html" target="pa-demo-demolition-row">Open ⤢</a></div></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>Every playable is headless-testable (simulation-time game clocks + debug hooks) and ships as one file.</p>
+  <p>Contact: <a href="mailto:merdankuliyev1402@gmail.com">merdankuliyev1402@gmail.com</a></p>
+  <p class="note">Serve this folder over HTTP to view (e.g. <code>python3 -m http.server</code> from the workspace root) — the cards embed the real playables.</p>
+</footer>
+
+<script>
+function reload(btn){
+  const f=btn.closest('.card').querySelector('iframe');
+  f.src=f.src;
+}
+</script>
+</body>
+</html>

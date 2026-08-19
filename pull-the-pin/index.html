@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Pull The Pin — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#141031; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(26px,6vw); font-weight:900; letter-spacing:2px; color:#ffd54a;
+    text-shadow:0 2px 0 #9c6c00, 0 4px 12px rgba(0,0,0,.5); }
+  #lvl { margin-top:2px; font-size:12px; font-weight:700; letter-spacing:3px; color:#b9b3e0; }
+  #goal { margin-top:6px; display:inline-flex; align-items:center; gap:7px; padding:5px 14px; border-radius:16px;
+    background:rgba(0,0,0,.28); color:#fff; font-weight:800; font-size:15px; transition:transform .12s; }
+  #goal .coin { width:16px; height:16px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #fff3b0, #ffd54a 45%, #c98a00); }
+  #goal.pop { transform:scale(1.25); }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- Toast ---------- */
+  #toast { position:absolute; top:38%; left:0; right:0; text-align:center; font-size:44px; font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.5);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#ffd54a; } #toast.bad { color:#ff6b5e; }
+
+  #flash { position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 40%, rgba(255,40,20,.55));
+    opacity:0; transition:opacity .5s; }
+  #flash.show { opacity:1; transition:opacity .08s; }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background:radial-gradient(ellipse at 50% 30%, #3d2d7a 0%, #16102f 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:96px; height:96px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:linear-gradient(160deg,#ffe27a,#f0a020); box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:30px; font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.4); }
+  #end p  { color:#b9b3e0; font-size:16px; margin-top:-8px; }
+  #cta { padding:18px 64px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#8f88bd; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="flash"></div>
+  <div id="hdr"><div id="title">PULL THE PIN!</div><div id="lvl">LEVEL 1 / 2</div>
+  <div id="goal"><span class="coin"></span><span id="goalTxt">0/0</span></div></div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="end">
+  <div class="icon">📌</div>
+  <h1>You're a natural!</h1>
+  <p>Can you beat Level 4?</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Watch again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   PULL THE PIN — self-contained playable ad
+   Scene designed in 720x1280 virtual units, letterbox-scaled to viewport.
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL: 'https://apps.apple.com/app/id000000000',   // replace per campaign
+  gravity: 2600,          // px/s^2 in scene units
+  ballR: 13,
+  restitution: 0.15,
+  friction: 0.996,        // air / rolling
+  substeps: 3,
+  winRatio: 0.55,         // portion of gold to collect
+  burnFail: 5,            // burned gold balls -> fail
+  lostFail: 12,           // gold lost to trap -> fail
+  idleHint: 4000,         // ms before tutorial hand
+  idleHintRetry: 1600,    // ms after a fail
+  autoEnd: 75000,         // ms -> force end card
+};
+
+/* ---------- tiny helpers ---------- */
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const lerp  = (a,b,t)=>a+(b-a)*t;
+const rnd   = (a,b)=>a+Math.random()*(b-a);
+const dist2 = (x1,y1,x2,y2)=>{const dx=x2-x1,dy=y2-y1;return dx*dx+dy*dy;};
+const $ = id=>document.getElementById(id);
+const vibe = p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+
+/* =========================================================================
+   AUDIO — synthesized, no assets
+   ========================================================================= */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  pop(){ this.tone(280,620,0.12,'square',0.18); },
+  ding(){ this.tone(880,880,0.09,'sine',0.12); this.tone(1318,1318,0.14,'sine',0.08,0.03); },
+  collect(n){ const f=660*Math.pow(1.05946,Math.min(n,16));   // rising pitch per pickup
+    this.tone(f,f,0.08,'sine',0.13); this.tone(f*1.5,f*1.5,0.11,'sine',0.06,0.02); },
+  burn(){ this.tone(160,60,0.25,'sawtooth',0.12); },
+  fail(){ this.tone(220,110,0.4,'sawtooth',0.22); this.tone(180,90,0.5,'square',0.12,0.08); },
+  win(){ [523,659,784,1047].forEach((f,i)=>this.tone(f,f,0.18,'triangle',0.2,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* =========================================================================
+   CTA / MRAID
+   ========================================================================= */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{ $('end').classList.remove('show'); loadLevel(0); S.mode='play'; S.t0=performance.now(); });
+
+/* =========================================================================
+   RENDER SETUP
+   ========================================================================= */
+const cv=$('game'), ctx=cv.getContext('2d');
+const SW=720, SH=1280;                       // scene size
+let vw=0, vh=0, dpr=1, scale=1, ox=0, oy=0;  // viewport transform
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  // `position:fixed; inset:0` does NOT size a canvas: for an absolutely
+  // positioned replaced element the intrinsic (attribute) size wins and the
+  // over-constrained right/bottom are dropped. Set the CSS box explicitly, or
+  // the element renders dpr times too large and the backing store is wasted.
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';
+  scale=Math.min(vw/SW,vh/SH); ox=(vw-SW*scale)/2; oy=(vh-SH*scale)/2;
+}
+addEventListener('resize',resize); resize();
+const toScene =(px,py)=>[(px-ox)/scale,(py-oy)/scale];
+const toScreen=(sx,sy)=>[ox+sx*scale,oy+sy*scale];
+
+/* pre-rendered ball sprites (fast + glow for free) */
+function ballSprite(draw){
+  const r=CONFIG.ballR, pad=10, c=document.createElement('canvas');
+  c.width=c.height=(r+pad)*2; const g=c.getContext('2d');
+  g.translate(r+pad,r+pad); draw(g,r); return c;
+}
+const SPR = {
+  gold: ballSprite((g,r)=>{ const gr=g.createRadialGradient(-r*.35,-r*.35,r*.15,0,0,r);
+    gr.addColorStop(0,'#fff3b0'); gr.addColorStop(.45,'#ffd54a'); gr.addColorStop(1,'#c98a00');
+    g.fillStyle=gr; g.beginPath(); g.arc(0,0,r,0,7); g.fill();
+    g.fillStyle='rgba(255,255,255,.85)'; g.beginPath(); g.arc(-r*.35,-r*.4,r*.22,0,7); g.fill(); }),
+  lava: ballSprite((g,r)=>{ g.shadowColor='#ff5a00'; g.shadowBlur=9;
+    const gr=g.createRadialGradient(-r*.3,-r*.3,r*.1,0,0,r);
+    gr.addColorStop(0,'#ffe08a'); gr.addColorStop(.4,'#ff8c1a'); gr.addColorStop(1,'#c81e00');
+    g.fillStyle=gr; g.beginPath(); g.arc(0,0,r,0,7); g.fill(); }),
+  lava2: ballSprite((g,r)=>{ g.shadowColor='#ff2a00'; g.shadowBlur=12;
+    const gr=g.createRadialGradient(-r*.3,-r*.3,r*.1,0,0,r);
+    gr.addColorStop(0,'#fff0b0'); gr.addColorStop(.4,'#ff6a00'); gr.addColorStop(1,'#a81400');
+    g.fillStyle=gr; g.beginPath(); g.arc(0,0,r,0,7); g.fill(); }),
+  coal: ballSprite((g,r)=>{ const gr=g.createRadialGradient(-r*.3,-r*.3,r*.1,0,0,r);
+    gr.addColorStop(0,'#6a6a72'); gr.addColorStop(1,'#26262c');
+    g.fillStyle=gr; g.beginPath(); g.arc(0,0,r,0,7); g.fill(); }),
+};
+
+/* background stars */
+const STARS=[]; for(let i=0;i<42;i++) STARS.push({x:Math.random()*SW,y:Math.random()*SH,r:rnd(.8,2.2),p:Math.random()*7});
+
+/* =========================================================================
+   LEVELS — geometry in scene units
+   walls: [x1,y1,x2,y2]  pins: {seg, dir, order}
+   ========================================================================= */
+const LEVELS=[
+  { // LEVEL 1 — pick the right pin
+    walls:[
+      [150,230,150,650],[310,230,310,650],          // left shaft
+      [410,230,410,650],[570,230,570,650],          // right shaft
+      [150,650,300,840],[570,650,420,840],          // funnel
+      [300,840,300,960],[420,840,420,960],[300,960,420,960], // chest
+    ],
+    block:[310,230,100,420],                        // decorative middle block x,y,w,h
+    pins:[
+      {seg:[140,650,320,650], dir:[-1,0], order:0}, // A under gold — correct
+      {seg:[400,650,580,650], dir:[ 1,0], order:-1},// B under lava — trap
+    ],
+    gold:{x0:165,x1:295,yb:636,n:34},
+    lava:{x0:425,x1:555,yb:636,n:30},
+    chest:{x0:300,x1:420,y:895},
+    traps:[], hint:[0],
+  },
+  { // LEVEL 2 — order matters: C (drain lava) -> B -> A
+    walls:[
+      [285,230,285,545],[285,665,285,970],          // left wall with side hole
+      [435,230,435,780],[435,780,405,880],[405,880,405,970], // right wall + funnel
+      [285,970,405,970],                            // chest floor
+      [110,545,110,810],[110,810,285,810],          // trap pocket
+    ],
+    block:null,
+    pins:[
+      {seg:[275,430,455,430], dir:[ 1,0], order:2}, // A under gold
+      {seg:[275,664,455,646], dir:[ 1,0], order:1}, // B under lava (tilted left)
+      {seg:[285,535,285,675], dir:[ 0,1], order:0}, // C covers side hole — pull first
+    ],
+    gold:{x0:300,x1:420,yb:416,n:30},
+    lava:{x0:300,x1:420,yb:640,n:26},
+    chest:{x0:285,x1:405,y:895},
+    traps:[{x0:110,x1:285,y:700,top:545,bot:806}], hint:[2,1,0],
+  },
+  { // LEVEL 3 — double trouble: two lava pockets, drain both, gold last
+    walls:[
+      [285,230,285,480],[285,600,285,970],          // left wall + hole to left trap
+      [435,230,435,660],[435,790,435,970],          // right wall + hole to right trap
+      [285,970,435,970],                            // chest floor
+      [110,480,110,810],[110,810,285,810],          // left trap pocket
+      [610,660,610,930],[435,930,610,930],          // right trap pocket
+    ],
+    block:null,
+    pins:[
+      {seg:[275,380,455,380], dir:[ 1,0], order:4}, // A under gold — pull LAST
+      {seg:[275,588,445,570], dir:[ 1,0], order:1}, // B under lava 1 (tilted left)
+      {seg:[285,470,285,600], dir:[ 0,1], order:0}, // C covers left hole
+      {seg:[275,750,445,768], dir:[ 1,0], order:3}, // D under lava 2 (tilted right)
+      {seg:[435,650,435,800], dir:[ 0,1], order:2}, // E covers right hole
+    ],
+    gold:{x0:300,x1:420,yb:366,n:30},
+    lava:{x0:300,x1:420,yb:556,n:20},
+    lava2:{x0:300,x1:420,yb:736,n:20},
+    chest:{x0:285,x1:435,y:895},
+    traps:[{x0:110,x1:285,y:640,top:480,bot:806},{x0:435,x1:610,y:800,top:660,bot:926}], hint:[2,1,4,3,0],
+  },
+];
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const S = {
+  mode:'play',            // play | transition | end
+  li:0, level:null,
+  balls:[], pins:[], parts:[],
+  goldTotal:0, collected:0, burned:0, lost:0,
+  lastInput:0, failedOnce:false, t0:performance.now(),
+  hand:{show:false,pin:null,ph:0},
+  drag:null, locked:false,
+};
+
+function spawnPile(def,type){
+  const r=CONFIG.ballR, cols=Math.floor((def.x1-def.x0)/(r*2+2));
+  for(let i=0;i<def.n;i++){
+    const c=i%cols, row=Math.floor(i/cols);
+    const x=def.x0+r+2+c*(r*2+2)+rnd(-1.5,1.5)+(row%2?r*0.7:0);
+    const y=def.yb-r-row*(r*2+1);
+    S.balls.push({x,y,px:x,py:y,type,r});
+  }
+}
+
+function loadLevel(i){
+  S.li=i; S.level=LEVELS[i];
+  S.balls=[]; S.parts=[]; S.collected=0; S.burned=0; S.lost=0; S.locked=false;
+  S.pins=S.level.pins.map(p=>{
+    const [x1,y1,x2,y2]=p.seg, len=Math.hypot(x2-x1,y2-y1);
+    return {x1,y1,x2,y2,dx:p.dir[0],dy:p.dir[1],order:p.order,len,pullDist:len+70,t:0,state:'in',anim:0};
+  });
+  spawnPile(S.level.gold,'gold'); spawnPile(S.level.lava,'lava');
+  if(S.level.lava2) spawnPile(S.level.lava2,'lava');
+  S.goldTotal=S.level.gold.n;
+  S.need=Math.ceil(S.goldTotal*CONFIG.winRatio); S.combo=0; S.chestPulse=0; S.shake=0;
+  goalUpd(false);
+  S.lastInput=performance.now(); S.hand.show=false;
+  $('lvl').textContent=`LEVEL ${i+1} / ${LEVELS.length}`;
+}
+
+/* =========================================================================
+   PHYSICS
+   ========================================================================= */
+function closestOnSeg(px,py,x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1, L2=dx*dx+dy*dy||1;
+  const t=clamp(((px-x1)*dx+(py-y1)*dy)/L2,0,1);
+  return [x1+dx*t, y1+dy*t];
+}
+function collideSeg(b,x1,y1,x2,y2){
+  const [cx,cy]=closestOnSeg(b.x,b.y,x1,y1,x2,y2);
+  const dx=b.x-cx, dy=b.y-cy, d2=dx*dx+dy*dy;
+  if(d2>=b.r*b.r||d2===0) return;
+  const d=Math.sqrt(d2), nx=dx/d, ny=dy/d, pen=b.r-d;
+  b.x+=nx*pen; b.y+=ny*pen;
+  const vx=b.x-b.px, vy=b.y-b.py, vn=vx*nx+vy*ny;
+  if(vn<0){
+    const vtx=vx-vn*nx, vty=vy-vn*ny;                   // tangential part
+    const rvx=vtx*0.985-vn*CONFIG.restitution*nx;       // friction + bounce
+    const rvy=vty*0.985-vn*CONFIG.restitution*ny;
+    b.px=b.x-rvx; b.py=b.y-rvy;
+  }
+}
+function physics(dt){
+  const h=dt/CONFIG.substeps, g=CONFIG.gravity, L=S.level;
+  // pin slide animation is part of the simulation, not the render
+  for(const p of S.pins){
+    if(p.state==='spring'){ p.t=Math.max(0,p.t-dt*3); if(p.t===0) p.state='in'; }
+    else if(p.state==='out'&&p.t<1) p.t=Math.min(1,p.t+dt*3.2);
+  }
+  for(let s=0;s<CONFIG.substeps;s++){
+    // integrate (verlet)
+    for(const b of S.balls){
+      const nx=b.x+(b.x-b.px)*CONFIG.friction, ny=b.y+(b.y-b.py)*CONFIG.friction+g*h*h;
+      b.px=b.x; b.py=b.y; b.x=nx; b.y=ny;
+    }
+    // ball-ball (2 iterations)
+    for(let it=0;it<2;it++){
+      for(let i=0;i<S.balls.length;i++){
+        const a=S.balls[i];
+        for(let j=i+1;j<S.balls.length;j++){
+          const b=S.balls[j], dx=b.x-a.x, dy=b.y-a.y, rr=a.r+b.r, d2=dx*dx+dy*dy;
+          if(d2>=rr*rr||d2===0) continue;
+          const d=Math.sqrt(d2), nx=dx/d, ny=dy/d, pen=(rr-d)/2;
+          a.x-=nx*pen; a.y-=ny*pen; b.x+=nx*pen; b.y+=ny*pen;
+          if(it===0) maybeBurn(a,b);
+        }
+      }
+    }
+    // walls & pins
+    for(const b of S.balls){
+      for(const w of L.walls) collideSeg(b,w[0],w[1],w[2],w[3]);
+      for(const p of S.pins){
+        if(p.t>=0.999) continue;
+        const off=p.t*p.pullDist;
+        collideSeg(b,p.x1+p.dx*off,p.y1+p.dy*off,p.x2+p.dx*off,p.y2+p.dy*off);
+      }
+    }
+  }
+  // sparkle trail behind fast-falling gold
+  if(S.parts.length<260) for(const b of S.balls){
+    if(b.type==='gold'&&(b.y-b.py)>5.5&&Math.random()<0.12)
+      S.parts.push({x:b.x+rnd(-6,6),y:b.y+rnd(-6,6),vx:0,vy:0,life:0.3,age:0,color:'#ffe27a',r:rnd(1.5,2.6),grav:0,kind:'dot'});
+  }
+  // zones: chest / trap / off-screen
+  for(let i=S.balls.length-1;i>=0;i--){
+    const b=S.balls[i], c=L.chest;
+    if(b.x>c.x0&&b.x<c.x1&&b.y>c.y){
+      S.balls.splice(i,1);
+      if(b.type==='gold'){ S.collected++; S.combo++; S.chestPulse=1; Sfx.collect(S.combo); vibe(8);
+        burst(b.x,b.y,'#ffd54a',6); goalUpd(true); checkWin(); }
+      else if(b.type==='lava'&&!S.locked){ doFail('NOT THE LAVA!'); }
+      continue;
+    }
+    if(b.type==='gold') for(const tr of L.traps){
+      if(b.x>tr.x0&&b.x<tr.x1&&b.y>tr.y){
+        b.type='lostgold'; S.lost++;
+        if(S.lost>=CONFIG.lostFail&&!S.locked) doFail('GOLD LOST!');
+        break;
+      }
+    }
+    if(b.y>SH+60) S.balls.splice(i,1);
+  }
+}
+function maybeBurn(a,b){
+  const gold=a.type==='gold'?a:b.type==='gold'?b:null;
+  const lava=a.type==='lava'?a:b.type==='lava'?b:null;
+  if(!gold||!lava) return;
+  gold.type='coal'; S.burned++; Sfx.burn(); smoke(gold.x,gold.y);
+  S.shake=Math.max(S.shake,5); vibe(20);
+  if(S.burned>=CONFIG.burnFail&&!S.locked) doFail('THE GOLD BURNED!');
+}
+
+/* =========================================================================
+   GAME FLOW
+   ========================================================================= */
+function checkWin(){
+  if(S.locked) return;
+  if(S.collected>=S.need){
+    S.locked=true; S.mode='transition'; Sfx.win(); vibe([30,40,30]);
+    const c=S.level.chest; confetti((c.x0+c.x1)/2,c.y);
+    toast(['AWESOME!','AMAZING!','INCREDIBLE!'][S.li]||'GREAT!','good');
+    setTimeout(()=>{
+      if(S.li+1<LEVELS.length){ loadLevel(S.li+1); S.mode='play'; }
+      else showEnd();
+    },1500);
+  }
+}
+function doFail(msg){
+  S.locked=true; S.mode='transition'; S.failedOnce=true; Sfx.fail(); S.shake=14; vibe(80);
+  toast(msg,'bad'); $('flash').classList.add('show');
+  setTimeout(()=>$('flash').classList.remove('show'),450);
+  setTimeout(()=>{ loadLevel(S.li); S.mode='play'; },1500);
+}
+function showEnd(){ S.mode='end'; $('end').classList.add('show'); }
+function goalUpd(pop){
+  $('goalTxt').textContent=S.collected+'/'+S.need;
+  if(pop){ const g=$('goal'); g.classList.remove('pop'); void g.offsetWidth; g.classList.add('pop'); }
+}
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  setTimeout(()=>t.classList.remove('show'),1200);
+}
+
+/* hint: next pin the player should pull */
+function hintPin(){
+  const seq=S.level.hint;
+  for(const idx of seq){ if(S.pins[idx].state!=='out') return S.pins[idx]; }
+  return null;
+}
+
+/* =========================================================================
+   INPUT — drag or tap pins
+   ========================================================================= */
+function pinHit(p,sx,sy){
+  const off=p.t*p.pullDist;
+  const [cx,cy]=closestOnSeg(sx,sy,p.x1+p.dx*off,p.y1+p.dy*off,p.x2+p.dx*off,p.y2+p.dy*off);
+  if(dist2(sx,sy,cx,cy)<52*52) return true;
+  // handle ring sits past the pull-direction end
+  const hx=(p.dx>0||p.dy>0?p.x2:p.x1)+p.dx*(off+26), hy=(p.dx>0||p.dy>0?p.y2:p.y1)+p.dy*(off+26);
+  return dist2(sx,sy,hx,hy)<56*56;
+}
+function pointerDown(e){
+  Sfx.ensure(); S.lastInput=performance.now(); S.hand.show=false;
+  if(S.mode!=='play'||S.locked) return;
+  const [sx,sy]=toScene(e.clientX,e.clientY);
+  for(const p of S.pins){
+    if(p.state!=='in') continue;
+    if(pinHit(p,sx,sy)){ S.drag={pin:p,sx,sy,t0:p.t,time:performance.now()}; return; }
+  }
+}
+function pointerMove(e){
+  if(!S.drag) return;
+  S.lastInput=performance.now();
+  const [sx,sy]=toScene(e.clientX,e.clientY), p=S.drag.pin;
+  const proj=((sx-S.drag.sx)*p.dx+(sy-S.drag.sy)*p.dy)/p.pullDist;
+  p.t=clamp(S.drag.t0+proj,0,1);
+  if(p.t>=1) releasePin(p);
+}
+function pointerUp(e){
+  if(!S.drag) return;
+  const p=S.drag.pin, quick=performance.now()-S.drag.time<220&&p.t<0.12;
+  S.drag=null;
+  if(quick||p.t>0.3) releasePin(p);       // tap or dragged far enough -> pull out
+  else p.state='spring';                   // snap back
+}
+function releasePin(p){ if(p.state!=='out'){ p.state='out'; S.drag=null; Sfx.pop(); vibe(15); } }
+cv.addEventListener('pointerdown',pointerDown);
+cv.addEventListener('pointermove',pointerMove);
+cv.addEventListener('pointerup',pointerUp);
+cv.addEventListener('pointercancel',pointerUp);
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would kill the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* =========================================================================
+   PARTICLES
+   ========================================================================= */
+function burst(x,y,color,n){ for(let i=0;i<n;i++) S.parts.push({x,y,vx:rnd(-160,160),vy:rnd(-260,-60),
+  life:rnd(.4,.7),age:0,color,r:rnd(2,4),grav:600,kind:'dot'}); }
+function smoke(x,y){ for(let i=0;i<4;i++) S.parts.push({x:x+rnd(-6,6),y:y+rnd(-6,6),vx:rnd(-20,20),vy:rnd(-90,-40),
+  life:rnd(.5,.9),age:0,color:'#555',r:rnd(4,8),grav:-60,kind:'smoke'}); }
+function confetti(x,y){ const cols=['#ffd54a','#42d76c','#ff6b9d','#5ac8fa','#ff9f43'];
+  for(let i=0;i<90;i++) S.parts.push({x:x+rnd(-40,40),y,vx:rnd(-380,380),vy:rnd(-700,-250),
+    life:rnd(.9,1.6),age:0,color:cols[i%cols.length],r:rnd(3,6),grav:900,rot:rnd(0,7),vr:rnd(-8,8),kind:'conf'}); }
+function updateParts(dt){
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt; if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; if(p.rot!==undefined) p.rot+=p.vr*dt;
+  }
+}
+
+/* =========================================================================
+   DRAWING
+   ========================================================================= */
+function drawBG(t){
+  const g=ctx.createLinearGradient(0,0,0,vh);
+  g.addColorStop(0,'#2a1e5c'); g.addColorStop(1,'#120e2a');
+  ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+  ctx.save(); ctx.translate(ox,oy); ctx.scale(scale,scale);
+  for(const s of STARS){ ctx.globalAlpha=0.35+0.3*Math.sin(t*0.001+s.p);
+    ctx.fillStyle='#cfc8ff'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill(); }
+  ctx.globalAlpha=1; ctx.restore();
+}
+function drawWalls(){
+  const L=S.level;
+  if(L.block){ const[bx,by,bw,bh]=L.block;
+    ctx.fillStyle='#332a5e'; ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle='#453a78'; ctx.fillRect(bx,by,bw,8); }
+  ctx.lineCap='round';
+  ctx.strokeStyle='#241c4a'; ctx.lineWidth=20;
+  for(const w of L.walls){ ctx.beginPath(); ctx.moveTo(w[0],w[1]); ctx.lineTo(w[2],w[3]); ctx.stroke(); }
+  ctx.strokeStyle='#4a3f85'; ctx.lineWidth=14;
+  for(const w of L.walls){ ctx.beginPath(); ctx.moveTo(w[0],w[1]); ctx.lineTo(w[2],w[3]); ctx.stroke(); }
+  // chest (pulses on every pickup)
+  const c=L.chest, cw=c.x1-c.x0;
+  if(S.chestPulse>0) S.chestPulse=Math.max(0,S.chestPulse-0.06);
+  const sc=1+S.chestPulse*0.12, ccx=c.x0+cw/2, ccy=c.y+25;
+  ctx.save(); ctx.translate(ccx,ccy); ctx.scale(sc,sc); ctx.translate(-ccx,-ccy);
+  ctx.fillStyle='#6b3f1d'; ctx.fillRect(c.x0+6,c.y-10,cw-12,70);
+  ctx.fillStyle='#8a5526'; ctx.fillRect(c.x0+6,c.y-10,cw-12,16);
+  ctx.fillStyle='#ffd54a'; ctx.fillRect(c.x0+cw/2-8,c.y+2,16,22);
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha=0.5+0.3*Math.sin(performance.now()*0.004);
+  const gl=ctx.createRadialGradient(c.x0+cw/2,c.y+10,4,c.x0+cw/2,c.y+10,cw*0.8);
+  gl.addColorStop(0,'rgba(255,213,74,.5)'); gl.addColorStop(1,'transparent');
+  ctx.fillStyle=gl; ctx.fillRect(c.x0-40,c.y-70,cw+80,140); ctx.restore();
+  for(const tr of L.traps){ ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fillRect(tr.x0+8,tr.top,tr.x1-tr.x0-16,tr.bot-tr.top); }
+}
+function drawPins(){
+  for(const p of S.pins){
+    if(p.t>=1) continue;
+    const off=p.t*p.pullDist;
+    const x1=p.x1+p.dx*off, y1=p.y1+p.dy*off, x2=p.x2+p.dx*off, y2=p.y2+p.dy*off;
+    ctx.lineCap='round';
+    ctx.strokeStyle='#7d8698'; ctx.lineWidth=16; ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.strokeStyle='#e8edf7'; ctx.lineWidth=9;  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    // handle ring at the pull-direction end
+    const ex=(p.dx>0||p.dy>0)?x2:x1, ey=(p.dx>0||p.dy>0)?y2:y1;
+    const hx=ex+p.dx*26, hy=ey+p.dy*26;
+    ctx.strokeStyle='#ffb300'; ctx.lineWidth=9; ctx.beginPath(); ctx.arc(hx,hy,18,0,7); ctx.stroke();
+    ctx.strokeStyle='#ffe27a'; ctx.lineWidth=3.5; ctx.beginPath(); ctx.arc(hx,hy,18,0,7); ctx.stroke();
+  }
+}
+function drawBalls(t){
+  const flick=Math.floor(t/120)%2;
+  for(const b of S.balls){
+    const spr=b.type==='gold'?SPR.gold : b.type==='coal'||b.type==='lostgold'?SPR.coal : (flick?SPR.lava:SPR.lava2);
+    ctx.drawImage(spr,b.x-spr.width/2,b.y-spr.height/2);
+  }
+}
+function drawParts(){
+  for(const p of S.parts){
+    const a=1-p.age/p.life; ctx.globalAlpha=p.kind==='smoke'?a*0.5:a;
+    ctx.fillStyle=p.color;
+    if(p.kind==='conf'){ ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r); ctx.restore(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r*(p.kind==='smoke'?1+p.age:1),0,7); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+function drawHand(t){
+  const idle=t-S.lastInput, wait=S.failedOnce?CONFIG.idleHintRetry:CONFIG.idleHint;
+  const p=hintPin();
+  if(S.mode!=='play'||!p||idle<wait){ S.hand.ph=0; return; }
+  S.hand.ph+=0.016;
+  const off=p.t*p.pullDist;
+  const ex=((p.dx>0||p.dy>0)?p.x2:p.x1)+p.dx*(off+26), ey=((p.dx>0||p.dy>0)?p.y2:p.y1)+p.dy*(off+26);
+  const k=(Math.sin(S.hand.ph*4)+1)/2;                 // 0..1 pull mimic
+  const hx=ex+p.dx*k*46, hy=ey+p.dy*k*46;
+  ctx.save(); ctx.translate(hx+14,hy+30); ctx.rotate(-0.3);
+  ctx.font='54px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.45)'; ctx.shadowBlur=10;
+  ctx.fillText('👆',0,0); ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  if(S.mode!=='end'){
+    physics(dt); updateParts(dt);
+    if(t-S.t0>CONFIG.autoEnd&&S.mode==='play') showEnd();
+  }
+  ctx.setTransform(dpr,0,0,dpr,0,0);   // everything below is drawn in CSS px
+  drawBG(t);
+  if(S.shake>0) S.shake=Math.max(0,S.shake-dt*30);
+  const shx=S.shake?rnd(-S.shake,S.shake)*scale:0, shy=S.shake?rnd(-S.shake,S.shake)*scale:0;
+  ctx.save(); ctx.translate(ox+shx,oy+shy); ctx.scale(scale,scale);
+  drawWalls(); drawPins(); drawBalls(t); drawParts(); drawHand(t);
+  ctx.restore();
+}
+
+/* MRAID-aware start */
+function start(){ loadLevel(0); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* debug hooks (harmless in production, ~100 bytes) */
+window.__game={S,CONFIG,pull:i=>releasePin(S.pins[i]),load:loadLevel,toScreen,toScene,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++){ physics(dt); updateParts(dt); } }};
+</script>
+</body>
+</html>

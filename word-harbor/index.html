@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Word Harbor — Playable Ad</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#06202a; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hdr { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:64px; right:104px; text-align:center; }
+  #title { font-size:min(25px,5.7vw); font-weight:900; letter-spacing:3px; color:#ffd98a;
+    text-shadow:0 2px 0 #7a4a10, 0 4px 12px rgba(0,0,0,.6); }
+  #sub { margin-top:2px; font-size:12px; font-weight:700; letter-spacing:3px; color:#6f9aa6; }
+  #coins { margin-top:5px; display:inline-flex; align-items:center; gap:7px; padding:5px 15px; border-radius:16px;
+    background:rgba(0,0,0,.34); color:#fff; font-weight:800; font-size:15px; transition:transform .12s; }
+  #coins .c { width:15px; height:15px; border-radius:50%;
+    background:radial-gradient(circle at 34% 30%, #fff6cf 0%, #ffcc4d 45%, #b8760c 100%); box-shadow:0 0 7px rgba(255,204,77,.6); }
+  #coins.pop { transform:scale(1.22); }
+
+  @media (orientation:portrait) and (max-height:620px){
+    #title { font-size:min(19px,5.2vw); letter-spacing:2px; }
+    #sub { font-size:10px; letter-spacing:2px; }
+    #coins { margin-top:3px; padding:3px 11px; font-size:13px; }
+    #coins .c { width:12px; height:12px; }
+  }
+  @media (orientation:landscape) and (max-height:520px){
+    #hdr { top:calc(4px + env(safe-area-inset-top)); }
+    #title { font-size:19px; letter-spacing:2px; }
+    #sub { font-size:10px; display:inline-block; margin-left:8px; }
+    #coins { margin:0 0 0 9px; padding:3px 11px; font-size:13px; vertical-align:middle; }
+  }
+
+  .btn { pointer-events:auto; cursor:pointer; border:none; font-weight:800; }
+  #get { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; padding:9px 18px; border-radius:22px;
+    background:linear-gradient(180deg,#42d76c,#149c46); color:#fff; font-size:15px; letter-spacing:1px;
+    box-shadow:0 3px 0 #0c6b2e, 0 6px 14px rgba(0,0,0,.4); animation:pulse 1.6s ease-in-out infinite; }
+  #mute { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:12px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); color:#fff; font-size:17px; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  /* ---------- Toast ---------- */
+  #toast { position:absolute; top:15%; left:0; right:0; text-align:center; font-size:min(34px,7.8vw); font-weight:900;
+    color:#fff; text-shadow:0 3px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.6);
+    opacity:0; transform:scale(.6); transition:all .25s cubic-bezier(.34,1.56,.64,1); }
+  #toast.show { opacity:1; transform:scale(1); }
+  #toast.good { color:#ffd98a; } #toast.bonus { color:#8affc1; } #toast.help { color:#7ee0ff; }
+
+  /* ---------- End card ---------- */
+  #end { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    background:radial-gradient(ellipse at 50% 30%, #14515f 0%, #05161d 70%); opacity:0; pointer-events:none; transition:opacity .5s; }
+  #end.show { opacity:1; pointer-events:auto; }
+  #end .icon { width:96px; height:96px; border-radius:24px; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:linear-gradient(160deg,#ffe3a8,#e09a2c); box-shadow:0 10px 30px rgba(0,0,0,.55), inset 0 2px 4px #fff6; }
+  #end h1 { color:#fff; font-size:min(30px,7vw); font-weight:900; text-align:center; padding:0 30px; text-shadow:0 3px 10px rgba(0,0,0,.45); }
+  #endStars { font-size:min(28px,6.5vw); letter-spacing:5px; }
+  #end p  { color:#8fadb6; font-size:16px; margin-top:-4px; text-align:center; padding:0 34px; line-height:1.35; }
+  #cta { margin-top:6px; padding:18px 64px; border-radius:34px; font-size:22px; letter-spacing:1px; color:#fff;
+    background:linear-gradient(180deg,#42d76c,#149c46); box-shadow:0 5px 0 #0c6b2e, 0 10px 24px rgba(0,0,0,.45);
+    animation:pulse 1.4s ease-in-out infinite; }
+  #replay { background:none; color:#6f8b94; font-size:14px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="hdr"><div id="title">WORD HARBOR</div><div id="sub">DOCK 1 / 3</div>
+  <div id="coins"><span class="c"></span><span id="coinTxt">0</span></div></div>
+  <button class="btn" id="mute">🔊</button>
+  <button class="btn" id="get">GET</button>
+  <div id="toast"></div>
+</div>
+<div id="end">
+  <div class="icon">⚓</div>
+  <h1>Harbour master!</h1>
+  <div id="endStars">⚓⚓⚓</div>
+  <p id="endSub">3 docks cleared · 780 coins.</p>
+  <button class="btn" id="cta">PLAY NOW</button>
+  <button class="btn" id="replay">↺ Watch again</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   WORD HARBOR — self-contained playable ad (word-swipe crossword)
+   Scene designed in 720x1280 virtual units, letterbox-scaled to viewport.
+   All timing runs on sim time (S.time) so the whole game is headless-steppable
+   through window.__game.tick().
+
+   No dictionary ships. Every word on a dock is an anagram-subset of that
+   dock's own letter set, so the level data IS the dictionary: a handful of
+   grid words plus a bonus list, well under a kilobyte for all three docks.
+   That is the whole reason this format fits in an ad — and the reason it is
+   the one project here that is bound to a campaign language.
+   ========================================================================= */
+
+const CONFIG = {
+  storeURL:'https://apps.apple.com/app/id000000000',  // replace per campaign
+  hitR:46,               // px — magnet radius around a wheel letter
+  flyT:0.34,             // s a letter takes to fly into the grid
+  flyStep:0.05,          // s between letters of the same word landing
+  bannerHold:0.55,       // s the resolved word stays on the banner
+  idleHint:3.0,          // s idle -> the hand traces the next word
+  idleAuto:6.5,          // s idle -> the ad plays itself, so it always self-completes
+  autoTrace:0.95,        // s the autopilot spends drawing a swipe
+  autoStep:0.75,         // s between autopilot words
+  helpAfter:6.0,         // s without finding a word -> the tide reveals one
+  levelPause:2.0,        // s on a cleared dock
+  autoEnd:115,           // s -> force end card
+};
+
+/* ---------- tiny helpers ---------- */
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const rnd   = (a,b)=>a+Math.random()*(b-a);
+const ease  = t=>t*t*(3-2*t);
+const $ = id=>document.getElementById(id);
+const vibe = p=>{ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+
+/* =========================================================================
+   AUDIO — synthesized, no assets
+   ========================================================================= */
+const Sfx = {
+  ctx:null, muted:false,
+  ensure(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+            if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  tone(f0,f1,dur,type,vol,when=0){
+    if(!this.ctx||this.muted) return;
+    const t=this.ctx.currentTime+when, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  },
+  pick(n){ const f=420*Math.pow(1.09,Math.min(n,9)); this.tone(f,f,0.07,'sine',0.09); },   // climbs per letter
+  land(n){ const f=560*Math.pow(1.07,Math.min(n,9)); this.tone(f,f*1.6,0.10,'triangle',0.11); },
+  good(){ [659,880,1175].forEach((f,i)=>this.tone(f,f,0.14,'triangle',0.12,i*0.06)); },
+  bonus(){ [988,1319].forEach((f,i)=>this.tone(f,f,0.11,'square',0.08,i*0.07));
+           this.tone(300,900,0.28,'sine',0.06,0.02); },
+  bad(){  this.tone(240,120,0.20,'sawtooth',0.07); },
+  tide(){ this.tone(140,420,0.55,'sine',0.09); this.tone(70,210,0.6,'triangle',0.06,0.05); },
+  dock(){ [523,659,784,1047].forEach((f,i)=>this.tone(f,f,0.18,'triangle',0.15,i*0.08)); },
+  win(){  [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,f,0.20,'triangle',0.18,i*0.09)); },
+};
+$('mute').addEventListener('click',()=>{ Sfx.muted=!Sfx.muted; $('mute').textContent=Sfx.muted?'🔇':'🔊'; });
+
+/* =========================================================================
+   CTA / MRAID
+   ========================================================================= */
+/* Portfolio demo only: the showcase names the browsing context it mounts a
+   playable into "pa-demo...", and a tap on the CTA then explains the button
+   instead of opening the placeholder store page. A file handed to an ad
+   network never carries that name, so its CTA path below is unchanged. */
+const DEMO_CTA = String(window.name).indexOf('pa-demo') === 0;
+function demoNotice(){
+  let t=document.getElementById('demoNote');
+  if(!t){
+    t=document.createElement('div'); t.id='demoNote';
+    t.innerHTML='<b>CTA \u2192 App Store</b><span>\u0412 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438 \u0437\u0434\u0435\u0441\u044c \u0441\u0441\u044b\u043b\u043a\u0430 \u0440\u0435\u043a\u043b\u0430\u043c\u043e\u0434\u0430\u0442\u0435\u043b\u044f</span>';
+    t.style.cssText='position:fixed;left:50%;bottom:5%;transform:translate(-50%,10px);'+
+      'display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;'+
+      'padding:10px 16px;border-radius:12px;background:rgba(10,12,18,.93);color:#fff;'+
+      'font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'+
+      'border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 28px rgba(0,0,0,.5);'+
+      'max-width:84%;z-index:99999;opacity:0;pointer-events:none';
+    t.lastChild.style.cssText='font-weight:400;font-size:11px;opacity:.72';
+    document.body.appendChild(t);
+  }
+  clearTimeout(t._hide);
+  // Shown with no transition on purpose: a CSS transition only advances while
+  // the frame is being rendered, and a browser throttling an offscreen iframe
+  // leaves the notice stuck at opacity 0. Fading out is cosmetic, so it keeps one.
+  t.style.transition='none'; t.style.opacity='1'; t.style.transform='translate(-50%,0)';
+  t._hide=setTimeout(()=>{
+    t.style.transition='opacity .25s ease,transform .25s ease';
+    t.style.opacity='0'; t.style.transform='translate(-50%,10px)';
+  },2400);
+}
+function openStore(){
+  if(DEMO_CTA){ demoNotice(); return; }
+  try{ if(window.mraid && mraid.open){ mraid.open(CONFIG.storeURL); return; } }catch(e){}
+  window.open(CONFIG.storeURL,'_blank');
+}
+$('get').addEventListener('click',openStore);
+$('cta').addEventListener('click',openStore);
+$('replay').addEventListener('click',()=>{
+  $('end').classList.remove('show');
+  S.coins=0; S.docks=0; S.bonusFound=0; S.tides=0; S.time=0; S.autoOn=false; loadLevel(0);
+});
+
+/* =========================================================================
+   RENDER SETUP — 720x1280 scene, letterboxed
+   ========================================================================= */
+const cv=$('game'), ctx=cv.getContext('2d');
+const SW=720, SH=1280;
+let vw=0, vh=0, dpr=1, scale=1, ox=0, oy=0;
+function resize(){
+  vw=innerWidth; vh=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=vw*dpr; cv.height=vh*dpr;
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';   // fixed inset:0 alone won't size a canvas
+  scale=Math.min(vw/SW,vh/SH); ox=(vw-SW*scale)/2; oy=(vh-SH*scale)/2;
+}
+addEventListener('resize',resize); resize();
+const toScene = (px,py)=>[(px-ox)/scale, (py-oy)/scale];
+
+/* =========================================================================
+   LAYOUT
+   ========================================================================= */
+const CELL=82, GMID=428;                 // crossword cell size / vertical centre of the grid band
+const WX=360, WY=934, WR=132, LR=36;     // letter wheel: centre, ring radius, letter radius
+const BANNER_Y=700;                      // the word being spelled
+// bonus chest: parked on the banner row, NOT under the grid — a 7-letter
+// set makes the board 7 cells wide and it collided with the old position
+const JAR_X=618, JAR_Y=690;              // bonus jar
+
+/* =========================================================================
+   DOCKS — every word is an anagram-subset of `set`, which is checked by
+   __game.audit(). Words are placed as {w, r, c, d}: d='h' across, 'v' down.
+   Crossings are all made on the long across word, so an intersection can
+   never disagree with itself.
+   ========================================================================= */
+/* =========================================================================
+   DOCKS, per locale. Every word is an anagram-subset of its dock's `set`,
+   which __game.audit() checks. Words are placed as {w, r, c, d}: d='h' across,
+   'v' down, and every crossing is made on the long across word so an
+   intersection can never disagree with itself.
+
+   The RU set exists to answer a real question rather than to ship a Russian
+   campaign: does this format survive a language it was not designed in?
+   The short version of the findings is that the
+   engine needed nothing, the *authoring* needed a 7-letter set because Russian
+   yields far fewer short words per letter set than English does.
+   ========================================================================= */
+const LOCALES={
+  en:{
+    ui:{ dock:'DOCK', tip:'SWIPE THE LETTERS TO SPELL A WORD',
+         tide:'THE TIDE REVEALS A WORD', cleared:'DOCK CLEARED!',
+         win:'Harbour master!', lost:'Good haul!',
+         sub:(d,c,b,all)=> d>=all
+           ? `${d} docks cleared · ${c} coins · ${b} bonus word${b===1?'':'s'} in the jar.`
+           : `${c} coins. ${all-d} dock${all-d>1?'s':''} still waiting.` },
+    docks:[
+  { set:'BOAT',
+    words:[{w:'BOAT',r:0,c:0,d:'h'},{w:'OAT',r:0,c:1,d:'v'},{w:'TAB',r:0,c:3,d:'v'}],
+    bonus:['AT','BAT','BOA','BOT','BOTA','TAO','TO','TOA'] },
+  { set:'WAVES',
+    words:[{w:'WAVES',r:0,c:0,d:'h'},{w:'WAS',r:0,c:0,d:'v'},{w:'VASE',r:0,c:2,d:'v'},{w:'SEA',r:0,c:4,d:'v'}],
+    bonus:['AES','ASE','AVE','AVES','AWE','AWES','SAVE','SAW','SEW','SWA',
+           'VAS','WAE','WAES','WASE','WAVE'] },
+  { set:'ANCHOR',
+    words:[{w:'ANCHOR',r:0,c:0,d:'h'},{w:'ARCH',r:0,c:0,d:'v'},{w:'CORN',r:0,c:2,d:'v'},{w:'RAN',r:0,c:5,d:'v'}],
+    bonus:['ACH','ACHOR','ACOR','ACORN','ACRON','AHO','ARC','ARCHON','ARN',
+           'CAN','CAR','CHA','CHAO','CHAR','CHO','CON','COR','CORA','CORAH',
+           'CRAN','CRO','HAN','HAO','HARN','HOAR','HORA','HORN','NACH',
+           'NACHO','NAR','NARC','NOA','NOR','OAR','OCH','ONA','ONCA','ORA',
+           'ORACH','ORC','ORCA','ORNA','RACH','RACON','RAH','RANCH','RANCHO',
+           'RHO','ROACH','ROAN','ROC','ROHAN'] },
+    ],
+  },
+  ru:{
+    ui:{ dock:'ПРИЧАЛ', tip:'ПРОВЕДИ ПО БУКВАМ — СОБЕРИ СЛОВО',
+         tide:'ПРИЛИВ ОТКРЫЛ СЛОВО', cleared:'ПРИЧАЛ ГОТОВ!',
+         win:'Капитан порта!', lost:'Хороший улов!',
+         // three docks always lands in the "few" form, so no plural engine is
+         // needed here — a locale with more docks would need one
+         sub:(d,c,b,all)=> d>=all
+           ? `${d} причала · ${c} монет · ${b} бонусных слов в сундуке.`
+           : `${c} монет. Осталось причалов: ${all-d}.` },
+    docks:[
+      { set:'ВОЛНА',
+        words:[{w:'ВОЛНА',r:0,c:0,d:'h'},{w:'ВАЛ',r:0,c:0,d:'v'},{w:'ЛОВ',r:0,c:2,d:'v'}],
+        bonus:['ВОЛ','ВОН','НОВ'] },
+      { set:'ПАРУС',
+        words:[{w:'ПАРУС',r:0,c:0,d:'h'},{w:'ПАР',r:0,c:0,d:'v'},{w:'СУП',r:0,c:4,d:'v'}],
+        bonus:['ПАС','УС'] },
+      { set:'КОРАБЛЬ',
+        words:[{w:'КОРАБЛЬ',r:0,c:0,d:'h'},{w:'КРАБ',r:0,c:0,d:'v'},
+               {w:'РАК',r:0,c:2,d:'v'},{w:'БОК',r:0,c:4,d:'v'}],
+        bonus:['БАЛ','БАР','БОКАЛ','БОЛЬ','БОР','БРАК','КОБРА','КОЛ','КОРА',
+               'КРОЛЬ','ЛАК','ЛАРЬ','ЛОБ','РАБ','РОК','РОЛЬ'] },
+    ],
+  },
+};
+let LOC='en', LEVELS=LOCALES.en.docks, UI=LOCALES.en.ui;
+/** swap the whole word set and the UI strings that go with it */
+function setLocale(id){
+  if(!LOCALES[id]) return false;
+  LOC=id; LEVELS=LOCALES[id].docks; UI=LOCALES[id].ui;
+  S.coins=0; S.docks=0; S.bonusFound=0; S.tides=0; loadLevel(0);
+  return true;
+}
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const S = {
+  mode:'play',              // play | clear | end
+  time:0, li:0,
+  cells:[], words:[], letters:[], found:{}, bonusHit:{},
+  trail:[], px:0, py:0, dragging:false,
+  flyers:[], parts:[], floats:[], timers:[],
+  banner:null,              // {txt, kind, t}
+  coins:0, docks:0, bonusFound:0, tides:0, wordsFound:0,
+  lastInput:0, lastFound:0, lastAuto:0, autoOn:false, auto:null, handPh:0, tip:1, shake:0,
+  gw:0, gh:0, gx:0, gy:0,
+};
+function later(sec,fn){ S.timers.push({t:S.time+sec,fn}); }
+
+/* ---------- level build ---------- */
+const cellKey=(r,c)=>r*16+c;
+function loadLevel(i){
+  const L=LEVELS[i]; S.li=i;
+  S.cells={}; S.words=[]; S.found={}; S.bonusHit={};
+  let gw=0, gh=0;
+  for(const spec of L.words){
+    const cells=[];
+    for(let k=0;k<spec.w.length;k++){
+      const r=spec.r+(spec.d==='v'?k:0), c=spec.c+(spec.d==='h'?k:0);
+      S.cells[cellKey(r,c)]={r,c,ch:spec.w[k],shown:false};
+      cells.push([r,c]);
+      gw=Math.max(gw,c+1); gh=Math.max(gh,r+1);
+    }
+    S.words.push({w:spec.w, cells, done:false});
+  }
+  // docks differ in size (4x3 up to 6x4), so the grid is centred in its band
+  // rather than hung from a fixed top edge
+  S.gw=gw; S.gh=gh; S.gx=(SW-gw*CELL)/2; S.gy=GMID-gh*CELL/2;
+  S.letters=L.set.split('').map((ch,k,arr)=>{
+    const a=-Math.PI/2+k*Math.PI*2/arr.length;
+    return {ch, x:WX+Math.cos(a)*WR, y:WY+Math.sin(a)*WR};
+  });
+  S.trail=[]; S.dragging=false; S.flyers=[]; S.parts=[]; S.floats=[]; S.timers=[];
+  S.banner=null; S.auto=null; S.wordsFound=0;
+  S.mode='play'; S.lastInput=S.time; S.lastFound=S.time; S.lastAuto=S.time;
+  S.handPh=0; S.shake=0;
+  $('sub').textContent=`${UI.dock} ${i+1} / ${LEVELS.length}`;
+  $('end').classList.remove('show');
+}
+
+/* ---------- word helpers ---------- */
+const curWord = ()=>S.trail.map(i=>S.letters[i].ch).join('');
+const gridWord = w=>S.words.find(o=>o.w===w);
+const bonusList = ()=>LEVELS[S.li].bonus;
+const unfound = ()=>S.words.filter(o=>!o.done);
+/** can `w` be spelled from `set` without reusing a letter? */
+function spellable(w,set){
+  const pool=set.split('');
+  for(const ch of w){ const i=pool.indexOf(ch); if(i<0) return false; pool.splice(i,1); }
+  return true;
+}
+
+/* =========================================================================
+   SWIPE INPUT — the three details that decide whether this format feels
+   right: a magnet radius bigger than the letter, backtracking along the
+   trail to un-pick, and silently ignoring a letter already in the word.
+   ========================================================================= */
+const cellX=c=>S.gx+c*CELL+CELL/2;
+const cellY=r=>S.gy+r*CELL+CELL/2;
+
+function touchLetter(x,y){
+  for(let i=0;i<S.letters.length;i++){
+    const L=S.letters[i];
+    if(Math.hypot(L.x-x,L.y-y)>CONFIG.hitR) continue;
+    const n=S.trail.length;
+    if(n && S.trail[n-1]===i) return;                              // still on the same letter
+    if(n>=2 && S.trail[n-2]===i){ S.trail.pop(); Sfx.pick(S.trail.length); return; }   // backtrack
+    if(S.trail.indexOf(i)>=0) return;                              // already used: ignore
+    S.trail.push(i); Sfx.pick(n); vibe(6);
+    return;
+  }
+}
+function pointerDown(e){
+  Sfx.ensure(); S.lastInput=S.time; S.handPh=0; S.autoOn=false; S.auto=null; S.trail=[];
+  if(S.mode!=='play') return;
+  const p=toScene(e.clientX,e.clientY);
+  S.px=p[0]; S.py=p[1]; S.dragging=true; S.tip=0;
+  touchLetter(p[0],p[1]);
+}
+function pointerMove(e){
+  if(!S.dragging) return;
+  const p=toScene(e.clientX,e.clientY); S.px=p[0]; S.py=p[1];
+  touchLetter(p[0],p[1]);
+}
+function pointerUp(){
+  if(!S.dragging) return;
+  S.dragging=false; S.lastInput=S.time;
+  const w=curWord(); S.trail=[];
+  if(w.length>=2) submit(w,true);
+}
+cv.addEventListener('pointerdown',pointerDown);
+addEventListener('pointermove',pointerMove);      // on window: the HUD buttons are
+addEventListener('pointerup',pointerUp);          // pointer-events:auto and would eat the drag
+addEventListener('pointercancel',pointerUp);
+// kill scroll/zoom, but never the DOM buttons: a cancelled touchstart also
+// cancels the click that follows it, which would break the CTA on iOS.
+document.addEventListener('touchstart',e=>{
+  if(!(e.target instanceof Element) || !e.target.closest('.btn')) e.preventDefault();
+},{passive:false});
+
+/* =========================================================================
+   RESOLUTION — grid word, bonus word, already found, or nonsense.
+   The level's own word lists are the entire dictionary.
+   ========================================================================= */
+function banner(txt,kind){ S.banner={txt,kind,t:0}; }
+function submit(w){
+  const g=gridWord(w);
+  if(g && !g.done){ solveWord(g,false); return true; }
+  if(g && g.done){ banner(w,'dup'); Sfx.bad(); return false; }
+  if(bonusList().indexOf(w)>=0){
+    if(S.bonusHit[w]){ banner(w,'dup'); Sfx.bad(); return false; }
+    // a bonus word is not progress toward finishing the dock, so it only buys
+    // half a tide's worth of delay. Letting it reset the timer outright pushed
+    // the worst random-play run from 94 s to 102 s against a 115 s cap.
+    S.bonusHit[w]=1; S.bonusFound++;
+    S.lastFound=Math.max(S.lastFound, S.time-CONFIG.helpAfter*0.5);
+    const gain=5*w.length; S.coins+=gain; coinUpd(true);
+    banner(w,'bonus'); Sfx.bonus(); vibe(12);
+    S.floats.push({x:JAR_X,y:JAR_Y-46,txt:'+'+gain,size:30,color:'#8affc1',age:0,life:0.95});
+    burst(JAR_X,JAR_Y-20,'#8affc1',12);
+    return true;
+  }
+  banner(w,'bad'); Sfx.bad(); S.shake=Math.max(S.shake,4); vibe(20);
+  return false;
+}
+function solveWord(g,viaTide){
+  g.done=true; S.wordsFound++; S.lastFound=S.time;
+  const gain=(viaTide?5:10)*g.w.length;
+  S.coins+=gain; coinUpd(true);
+  if(!viaTide){ banner(g.w,'good'); Sfx.good(); vibe([12,25,12]); }
+  let k=0;
+  for(const rc of g.cells){
+    const cell=S.cells[cellKey(rc[0],rc[1])];
+    if(cell.shown || cell.flying) continue;
+    cell.flying=true;
+    const src=S.letters.find(L=>L.ch===cell.ch) || {x:WX,y:WY};
+    S.flyers.push({x0:src.x, y0:src.y, x1:cellX(rc[1]), y1:cellY(rc[0]),
+                   ch:cell.ch, t:-k*CONFIG.flyStep, dur:CONFIG.flyT, cell, n:k});
+    k++;
+  }
+  S.floats.push({x:SW/2, y:S.gy+S.gh*CELL+46, txt:'+'+gain, size:32, color:'#ffd98a', age:0, life:0.9});
+}
+/** ad-safety: however long somebody flails, a word lands every helpAfter seconds */
+function tide(){
+  const u=unfound(); if(!u.length) return;
+  const g=u.slice().sort((a,b)=>a.w.length-b.w.length)[0];
+  S.tides++; toast(UI.tide,'help'); Sfx.tide(); vibe([15,30,15]);
+  solveWord(g,true);
+}
+function levelDone(){
+  S.mode='clear'; S.docks++; Sfx.dock(); vibe([20,40,20]);
+  confetti(SW/2, S.gy+S.gh*CELL/2);
+  toast(UI.cleared,'good');
+  later(CONFIG.levelPause,()=>{
+    if(S.li+1<LEVELS.length) loadLevel(S.li+1); else showEnd();
+  });
+}
+
+/* ---------- what the ad plays next; the hint hand traces the same word ---- */
+function tracePath(w){
+  const used={}, path=[];
+  for(const ch of w){
+    for(let i=0;i<S.letters.length;i++){
+      if(used[i] || S.letters[i].ch!==ch) continue;
+      used[i]=1; path.push(i); break;
+    }
+  }
+  return path;
+}
+function nextAutoWord(){
+  // one bonus word per dock first: it is the only way the bonus jar ever gets
+  // demonstrated in an untouched impression
+  if(Object.keys(S.bonusHit).length===0 && unfound().length>1){
+    const b=bonusList().filter(w=>!S.bonusHit[w] && spellable(w,LEVELS[S.li].set) && !gridWord(w))
+                       .sort((a,b2)=>b2.length-a.length)[0];
+    if(b) return {w:b};
+  }
+  const u=unfound();
+  if(!u.length) return null;
+  return u.slice().sort((a,b)=>b.w.length-a.w.length)[0];
+}
+
+/* =========================================================================
+   PARTICLES / FLOATS
+   ========================================================================= */
+function burst(x,y,color,n){
+  for(let i=0;i<n;i++) S.parts.push({x,y,vx:rnd(-220,220),vy:rnd(-260,80),
+    life:rnd(.30,.62),age:0,color,r:rnd(2.5,5.5),grav:880,kind:'dot'});
+}
+function confetti(x,y){
+  const cols=['#ffd98a','#42d76c','#7ee0ff','#ff9ec4','#ff9f43'];
+  for(let i=0;i<95;i++) S.parts.push({x:x+rnd(-80,80),y,vx:rnd(-400,400),vy:rnd(-780,-260),
+    life:rnd(.9,1.8),age:0,color:cols[i%cols.length],r:rnd(3,6),grav:980,rot:rnd(0,7),vr:rnd(-9,9),kind:'conf'});
+}
+function updateParts(dt){
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.age+=dt;
+    if(p.age>p.life){ S.parts.splice(i,1); continue; }
+    p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+    if(p.rot!==undefined) p.rot+=p.vr*dt;
+  }
+  for(let i=S.floats.length-1;i>=0;i--){
+    const f=S.floats[i]; f.age+=dt; f.y-=52*dt;
+    if(f.age>f.life) S.floats.splice(i,1);
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+function coinUpd(pop){
+  $('coinTxt').textContent=S.coins;
+  if(pop){ const g=$('coins'); g.classList.remove('pop'); void g.offsetWidth; g.classList.add('pop'); }
+}
+function toast(msg,cls){
+  const t=$('toast'); t.textContent=msg; t.className=cls+' show';
+  later(1.4,()=>t.classList.remove('show'));
+}
+function showEnd(){
+  S.mode='end';
+  $('endStars').textContent='⚓'.repeat(Math.max(S.docks,1));
+  $('end').querySelector('h1').textContent = S.docks>=LEVELS.length ? UI.win : UI.lost;
+  $('endSub').textContent = UI.sub(S.docks, S.coins, S.bonusFound, LEVELS.length);
+  $('end').classList.add('show');
+}
+
+/* =========================================================================
+   UPDATE — everything on sim time
+   ========================================================================= */
+function update(dt){
+  S.time+=dt;
+  for(let i=S.timers.length-1;i>=0;i--){
+    if(S.time>=S.timers[i].t){ const fn=S.timers[i].fn; S.timers.splice(i,1); fn(); }
+  }
+  updateParts(dt);
+  for(let i=S.flyers.length-1;i>=0;i--){                    // letters flying into the grid
+    const f=S.flyers[i]; f.t+=dt;
+    if(f.t>=f.dur){
+      S.flyers.splice(i,1);
+      f.cell.shown=true; f.cell.flying=false; f.cell.pop=0;
+      Sfx.land(f.n); burst(f.x1,f.y1,'#ffd98a',7);
+    }
+  }
+  for(const k in S.cells){ const c=S.cells[k]; if(c.pop!==undefined && c.pop<1) c.pop=Math.min(1,c.pop+dt/0.26); }
+  if(S.banner){ S.banner.t+=dt; if(S.banner.t>CONFIG.bannerHold) S.banner=null; }
+  if(S.shake>0) S.shake=Math.max(0,S.shake-dt*24);
+  if(S.tip>0 && S.wordsFound>0) S.tip=Math.max(0,S.tip-dt*1.8);
+  if(S.mode==='play' && S.time-S.lastInput>=CONFIG.idleHint) S.handPh+=dt;
+
+  if(S.auto){                                              // the autopilot draws a swipe
+    const a=S.auto; a.t+=dt;
+    const k=clamp(a.t/CONFIG.autoTrace,0,1);
+    const want=Math.min(a.path.length, Math.max(1,Math.ceil(k*a.path.length)));
+    while(S.trail.length<want){ Sfx.pick(S.trail.length); S.trail.push(a.path[S.trail.length]); }
+    if(S.trail.length){ const L=S.letters[S.trail[S.trail.length-1]]; S.px=L.x; S.py=L.y; }
+    if(a.t>=CONFIG.autoTrace){
+      const w=curWord(); S.trail=[]; S.auto=null; S.lastAuto=S.time;
+      if(w.length>=2) submit(w);
+    }
+  }
+
+  if(S.mode==='play'){
+    if(!unfound().length && !S.flyers.length){ levelDone(); return; }
+    if(!S.dragging && !S.auto && !S.flyers.length){
+      // ad-safety 1: left alone, the ad plays itself to the end card
+      if(S.autoOn || S.time-S.lastInput>CONFIG.idleAuto){
+        S.autoOn=true;
+        if(S.time-S.lastAuto>CONFIG.autoStep){
+          const g=nextAutoWord();
+          if(g){ S.auto={w:g.w, path:tracePath(g.w), t:0}; S.trail=[]; }
+        }
+      }
+      // ad-safety 2: however badly it is being played, words keep landing
+      else if(S.time-S.lastFound>CONFIG.helpAfter) tide();
+    }
+  }
+  if(S.time>CONFIG.autoEnd && S.mode!=='end') showEnd();
+}
+
+/* =========================================================================
+   DRAWING
+   ========================================================================= */
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,vh);
+  g.addColorStop(0,'#0e4453'); g.addColorStop(0.55,'#082b37'); g.addColorStop(1,'#04141c');
+  ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+  ctx.save(); ctx.translate(ox,oy); ctx.scale(scale,scale);
+  ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=3;      // slow swell behind everything
+  for(let i=0;i<7;i++){
+    const y=180+i*150, ph=S.time*0.5+i;
+    ctx.beginPath();
+    for(let x=-40;x<=SW+40;x+=30) ctx.lineTo(x, y+Math.sin(x/120+ph)*7);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+/** the crossword: a plank board with recessed tiles, cream ink on found ones */
+function drawGrid(){
+  const w=S.gw*CELL, h=S.gh*CELL, x=S.gx, y=S.gy;
+  ctx.fillStyle='rgba(0,0,0,.4)'; roundRect(x-16,y-14,w+32,h+30,18); ctx.fill();
+  const g=ctx.createLinearGradient(0,y,0,y+h);
+  g.addColorStop(0,'#7b5230'); g.addColorStop(1,'#4e321a');
+  ctx.fillStyle=g; roundRect(x-10,y-8,w+20,h+18,14); ctx.fill();
+  ctx.strokeStyle='rgba(255,214,150,.28)'; ctx.lineWidth=3; roundRect(x-10,y-8,w+20,h+18,14); ctx.stroke();
+  for(const k in S.cells){
+    const c=S.cells[k], cx=cellX(c.c), cy=cellY(c.r);
+    const sc=c.shown && c.pop<1 ? 1+0.30*Math.sin(Math.PI*c.pop) : 1;
+    ctx.save(); ctx.translate(cx,cy); ctx.scale(sc,sc);
+    if(c.shown){
+      const t=ctx.createLinearGradient(0,-CELL/2,0,CELL/2);
+      t.addColorStop(0,'#fdf1d8'); t.addColorStop(1,'#e3c79a');
+      ctx.fillStyle=t;
+    } else ctx.fillStyle='rgba(0,0,0,.30)';
+    roundRect(-CELL/2+6,-CELL/2+6,CELL-12,CELL-12,11); ctx.fill();
+    ctx.strokeStyle=c.shown?'rgba(90,58,24,.45)':'rgba(255,222,175,.16)'; ctx.lineWidth=2;
+    roundRect(-CELL/2+6,-CELL/2+6,CELL-12,CELL-12,11); ctx.stroke();
+    if(c.shown){
+      ctx.fillStyle='#3a2612'; ctx.font='900 42px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(c.ch,0,2);
+    }
+    ctx.restore();
+  }
+}
+/** bonus jar: where valid-but-not-on-the-board words go */
+function drawJar(){
+  const n=Object.keys(S.bonusHit).length;
+  ctx.save(); ctx.translate(JAR_X,JAR_Y);
+  ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0,34,34,8,0,0,7); ctx.fill();
+  const g=ctx.createLinearGradient(0,-30,0,32);
+  g.addColorStop(0,'#8a5a2a'); g.addColorStop(1,'#4d2f13');
+  ctx.fillStyle=g; roundRect(-34,-14,68,46,9); ctx.fill();
+  ctx.strokeStyle='rgba(255,214,150,.5)'; roundRect(-34,-14,68,46,9); ctx.stroke();
+  ctx.fillStyle='#c98f36'; roundRect(-38,-30,76,20,7); ctx.fill();           // lid
+  ctx.strokeStyle='rgba(255,240,200,.45)'; roundRect(-38,-30,76,20,7); ctx.stroke();
+  ctx.fillStyle=n?'#ffd98a':'rgba(255,217,138,.35)';
+  ctx.font='900 20px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(n,0,12);
+  ctx.fillStyle='rgba(255,217,138,.55)'; ctx.font='700 12px system-ui';
+  ctx.fillText('BONUS',0,48);
+  ctx.restore();
+}
+function drawBanner(){
+  let txt='', kind='live';
+  if(S.trail.length){ txt=curWord(); }
+  else if(S.banner){ txt=S.banner.txt; kind=S.banner.kind; }
+  if(!txt) return;
+  ctx.save();
+  ctx.font='900 46px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  const w=Math.max(ctx.measureText(txt).width+64,190);
+  const shakeX = kind==='bad'||kind==='dup' ? Math.sin(S.banner.t*46)*7*(1-S.banner.t/CONFIG.bannerHold) : 0;
+  ctx.translate(SW/2+shakeX,BANNER_Y);
+  const col = kind==='good' ? ['#3fbf6a','#1d7a41'] : kind==='bonus' ? ['#39b6c9','#146d7d']
+            : kind==='bad'||kind==='dup' ? ['#c9503f','#7d2418'] : ['rgba(255,255,255,.14)','rgba(255,255,255,.06)'];
+  const g=ctx.createLinearGradient(0,-32,0,32);
+  g.addColorStop(0,col[0]); g.addColorStop(1,col[1]);
+  ctx.fillStyle=g; roundRect(-w/2,-34,w,68,20); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=2.5; roundRect(-w/2,-34,w,68,20); ctx.stroke();
+  ctx.fillStyle='#fff'; ctx.fillText(txt,0,2);
+  ctx.restore();
+}
+function drawWheel(){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(WX,WY+8,WR+62,0,7); ctx.fill();
+  const g=ctx.createRadialGradient(WX-40,WY-50,30,WX,WY,WR+62);
+  g.addColorStop(0,'#125062'); g.addColorStop(1,'#072430');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(WX,WY,WR+62,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(255,214,150,.35)'; ctx.lineWidth=7;      // rope ring
+  ctx.setLineDash([16,11]); ctx.beginPath(); ctx.arc(WX,WY,WR+52,0,7); ctx.stroke(); ctx.setLineDash([]);
+
+  if(S.trail.length){                                            // the swipe itself
+    ctx.strokeStyle='rgba(255,217,138,.85)'; ctx.lineWidth=11; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath();
+    S.trail.forEach((i,k)=>{ const L=S.letters[i]; k?ctx.lineTo(L.x,L.y):ctx.moveTo(L.x,L.y); });
+    if(S.dragging||S.auto) ctx.lineTo(S.px,S.py);
+    ctx.stroke();
+  }
+  for(let i=0;i<S.letters.length;i++){
+    const L=S.letters[i], on=S.trail.indexOf(i)>=0;
+    ctx.save(); ctx.translate(L.x,L.y);
+    if(on) ctx.scale(1.12,1.12);
+    ctx.fillStyle='rgba(0,0,0,.4)'; roundRect(-LR+3,-LR+7,LR*2,LR*2,13); ctx.fill();
+    const t=ctx.createLinearGradient(0,-LR,0,LR);
+    if(on){ t.addColorStop(0,'#ffe9b0'); t.addColorStop(1,'#e0a02c'); }
+    else  { t.addColorStop(0,'#fdf1d8'); t.addColorStop(1,'#cbab7d'); }
+    ctx.fillStyle=t; roundRect(-LR,-LR,LR*2,LR*2,13); ctx.fill();
+    ctx.strokeStyle='rgba(80,50,16,.5)'; ctx.lineWidth=2.5; roundRect(-LR,-LR,LR*2,LR*2,13); ctx.stroke();
+    ctx.fillStyle='#3a2612'; ctx.font='900 40px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(L.ch,0,2);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawFlyers(){
+  for(const f of S.flyers){
+    if(f.t<0) continue;
+    const k=ease(clamp(f.t/f.dur,0,1));
+    const x=f.x0+(f.x1-f.x0)*k, y=f.y0+(f.y1-f.y0)*k-Math.sin(Math.PI*k)*70;
+    ctx.save(); ctx.translate(x,y); ctx.scale(1-0.15*k,1-0.15*k);
+    const t=ctx.createLinearGradient(0,-LR,0,LR);
+    t.addColorStop(0,'#ffe9b0'); t.addColorStop(1,'#e0a02c');
+    ctx.fillStyle=t; roundRect(-LR,-LR,LR*2,LR*2,13); ctx.fill();
+    ctx.fillStyle='#3a2612'; ctx.font='900 40px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(f.ch,0,2);
+    ctx.restore();
+  }
+}
+function drawHint(){
+  if(S.mode!=='play' || S.time-S.lastInput<CONFIG.idleHint || S.dragging || S.auto) return;
+  const g=nextAutoWord(); if(!g) return;
+  const path=tracePath(g.w); if(!path.length) return;
+  const k=(Math.sin(S.handPh*2.4)+1)/2;
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,'+(0.20+0.25*(1-k))+')'; ctx.lineWidth=9;
+  ctx.lineCap='round'; ctx.lineJoin='round'; ctx.setLineDash([3,20]);
+  ctx.beginPath();
+  path.forEach((i,n)=>{ const L=S.letters[i]; n?ctx.lineTo(L.x,L.y):ctx.moveTo(L.x,L.y); });
+  ctx.stroke(); ctx.setLineDash([]);
+  const seg=k*(path.length-1), i0=Math.floor(seg), f=seg-i0;
+  const A=S.letters[path[i0]], B=S.letters[path[Math.min(i0+1,path.length-1)]];
+  ctx.translate(A.x+(B.x-A.x)*f+22, A.y+(B.y-A.y)*f+30);
+  ctx.font='50px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=10;
+  ctx.fillText('👆',0,0);
+  ctx.restore();
+}
+function drawParts(){
+  for(const p of S.parts){
+    const a=1-p.age/p.life;
+    ctx.globalAlpha=a; ctx.fillStyle=p.color;
+    if(p.kind==='conf'){ ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r); ctx.restore(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+function drawFloats(){
+  for(const f of S.floats){
+    const a=1-f.age/f.life;
+    ctx.globalAlpha=a; ctx.fillStyle=f.color;
+    ctx.font='900 '+f.size+'px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle='rgba(0,0,0,.45)'; ctx.lineWidth=5;
+    ctx.strokeText(f.txt,f.x,f.y); ctx.fillText(f.txt,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+function drawTip(){
+  if(S.li>0 || S.tip<=0) return;
+  ctx.save(); ctx.globalAlpha=S.tip*0.9;
+  ctx.fillStyle='#9fc4ce'; ctx.font='700 22px system-ui'; ctx.textAlign='center';
+  ctx.fillText(UI.tip, 360, 1168);
+  ctx.restore();
+}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);                 // draw in CSS px, sharp on retina
+  drawBG();
+  const sh=S.shake, shx=sh?rnd(-sh,sh)*scale:0, shy=sh?rnd(-sh,sh)*scale:0;
+  ctx.save(); ctx.translate(ox+shx,oy+shy); ctx.scale(scale,scale);
+  drawGrid();
+  drawJar();
+  drawTip();
+  drawBanner();
+  drawWheel();
+  drawFlyers();
+  drawHint();
+  drawParts();
+  drawFloats();
+  ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+let last=performance.now();
+function frame(t){
+  requestAnimationFrame(frame);
+  const dt=Math.min((t-last)/1000,1/30); last=t;
+  update(dt);
+  draw();
+}
+
+/* MRAID-aware start */
+function start(){ loadLevel(0); requestAnimationFrame(frame); }
+try{
+  if(window.mraid){
+    if(mraid.getState()==='loading') mraid.addEventListener('ready',start); else start();
+  } else start();
+}catch(e){ start(); }
+
+/* =========================================================================
+   DEBUG HOOKS — headless stepping and verification.
+   solve() and stress() drive the real resolution path, so they cannot pass
+   while the game fails. Both leave the live state where they finished.
+   ========================================================================= */
+window.__game={ S, CONFIG, LOCALES, locale:setLocale, get LEVELS(){return LEVELS;}, load:loadLevel, end:showEnd, next:nextAutoWord, spellable,
+  tick:(frames=1,dt=1/60)=>{ for(let i=0;i<frames;i++) update(dt); draw(); },
+  say:w=>submit(w.toUpperCase()),
+  swipe:w=>{ const p=tracePath(w.toUpperCase()); S.trail=p.slice(); const t=curWord(); S.trail=[];
+             return t===w.toUpperCase() ? submit(t) : 'unspellable: '+t; },
+  board:()=>{ const out=[];
+    for(let r=0;r<S.gh;r++){ let s='';
+      for(let c=0;c<S.gw;c++){ const cell=S.cells[cellKey(r,c)];
+        s += cell ? (cell.shown?cell.ch:'_') : '.'; }
+      out.push(s); }
+    return out; },
+  /** the docks as authored: is every word actually spellable from that dock's
+      letters, and do the crossings agree? A dock that fails this is a dock the
+      player can never finish. */
+  audit:(loc)=>(loc?LOCALES[loc].docks:LEVELS).map((L,i)=>{
+    const map={}, conflicts=[];
+    for(const s of L.words) for(let k=0;k<s.w.length;k++){
+      const r=s.r+(s.d==='v'?k:0), c=s.c+(s.d==='h'?k:0), key=r+','+c;
+      if(map[key]!==undefined && map[key]!==s.w[k]) conflicts.push(key+' '+map[key]+'/'+s.w[k]);
+      map[key]=s.w[k];
+    }
+    return { dock:i+1, set:L.set,
+      repeatedLetterInSet: new Set(L.set.split('')).size!==L.set.length,
+      words:L.words.map(s=>s.w), cells:Object.keys(map).length, conflicts,
+      unspellableWords: L.words.filter(s=>!spellable(s.w,L.set)).map(s=>s.w),
+      unspellableBonus: L.bonus.filter(w=>!spellable(w,L.set)),
+      bonusAlsoInGrid:  L.bonus.filter(w=>L.words.some(s=>s.w===w)),
+      bonusCount:L.bonus.length,
+      bytes: JSON.stringify(L).length };
+  }),
+  /** untouched impression: the autopilot swipes its way through every dock */
+  solve:(maxSec=130,dt=1/30)=>{
+    // zero the clock BEFORE loadLevel stamps its timers off it, then pin every
+    // "last X" explicitly: a hook whose second call disagrees with its first is
+    // not evidence of anything
+    S.time=0; loadLevel(0); S.coins=0; S.docks=0; S.bonusFound=0; S.tides=0;
+    S.lastInput=-999; S.lastFound=-999; S.lastAuto=-999; S.autoOn=true;
+    const marks=[]; let li=-1;
+    for(let i=0;i<maxSec/dt && S.mode!=='end'; i++){
+      update(dt);
+      if(S.li!==li){ li=S.li; marks.push(`t=${S.time.toFixed(1)} dock ${li+1}`); }
+    }
+    return { finished:S.mode==='end', t:+S.time.toFixed(1), docks:S.docks, coins:S.coins,
+             bonus:S.bonusFound, tides:S.tides, marks };
+  },
+  /** a player swiping nonsense: random letter runs off the wheel, submitted
+      through the real resolver, with lastInput kept fresh so the autopilot
+      never takes over. This is what proves the tide rescue actually rescues. */
+  stress:(trials=40,maxSec=170,seed=12345,dt=1/30)=>{
+    let z=seed>>>0; const rand=()=>{ z=(z*1664525+1013904223)>>>0; return z/4294967296; };
+    let ok=0, sum=0, worst=0, tides=0, lucky=0;
+    for(let n=0;n<trials;n++){
+      S.time=0; loadLevel(0); S.coins=0; S.docks=0; S.bonusFound=0; S.tides=0;
+      S.autoOn=false; S.auto=null; let acc=0;
+      for(let i=0;i<maxSec/dt && S.mode!=='end'; i++){
+        update(dt);
+        S.lastInput=S.time;                          // an ACTIVE player: autopilot never engages
+        acc+=dt;
+        if(acc>=0.7 && S.mode==='play'){
+          acc=0;
+          const set=LEVELS[S.li].set, len=2+Math.floor(rand()*(set.length-1));
+          const pool=set.split(''); let w='';
+          for(let k=0;k<len && pool.length;k++) w+=pool.splice(Math.floor(rand()*pool.length),1)[0];
+          if(submit(w)) lucky++;
+        }
+      }
+      if(S.mode==='end' && S.docks>=LEVELS.length){ ok++; sum+=S.time; worst=Math.max(worst,S.time); tides+=S.tides; }
+    }
+    return { trials, completed:ok, rate:+(ok/trials).toFixed(3), avgSec:+(sum/Math.max(ok,1)).toFixed(1),
+             worstSec:+worst.toFixed(1), avgTideRescues:+(tides/Math.max(ok,1)).toFixed(2), luckyGuesses:lucky };
+  },
+};
+</script>
+</body>
+</html>
