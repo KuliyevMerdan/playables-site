@@ -44,6 +44,7 @@
   .tag.traffic{ background:#ffd23f; } .tag.bubble { background:#5ad2ff; }
   .tag.merge  { background:#ffb45c; } .tag.word { background:#ffd98a; }
   .tag.svc    { background:#ff7a45; } .tag.phys { background:#ffb020; }
+  .tag.rpg    { background:#ff5d4d; }
 
   .phone { position:relative; margin:0 auto; width:min(252px,80%); border-radius:26px; padding:9px;
     background:#05060b; border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 30px rgba(0,0,0,.5); }
@@ -76,13 +77,13 @@
 <header>
   <span class="kicker">PORTFOLIO</span>
   <h1>Playable Ads</h1>
-  <p class="sub">Thirteen self-contained playables — every one a single HTML file with zero libraries,<br>
+  <p class="sub">Fourteen self-contained playables — every one a single HTML file with zero libraries,<br>
     zero external assets and synthesized audio. Live and fully interactive below.</p>
   <div class="chips">
-    <span class="chip"><b>13</b> playables</span>
+    <span class="chip"><b>14</b> playables</span>
     <span class="chip"><b>0</b> dependencies</span>
     <span class="chip"><b>0</b> asset files</span>
-    <span class="chip"><b>22–47 KB</b> each</span>
+    <span class="chip"><b>22–60 KB</b> each</span>
     <span class="chip">MRAID-ready</span>
     <span class="chip">Meta · AppLovin · Unity · ironSource</span>
   </div>
@@ -291,6 +292,21 @@
       <div class="cardFoot"><span class="size">47 KB</span>
         <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
           <a class="open" href="../demolition-row/index.html" target="pa-demo-demolition-row">Open ⤢</a></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="cardHead"><h2>Butcher Hero</h2><span class="tag rpg">Action RPG</span></div>
+    <div class="phone"><div class="notch"></div>
+      <iframe src="../butcher-hero/index.html" title="Butcher Hero" name="pa-demo" loading="lazy"></iframe></div>
+    <div class="cardBody">
+      <p class="desc">Kill, then <b>eat what you kill</b>: every corpse is an instant stat — hogs give damage,
+        roosters speed, bulls health. Seven waves and a boss in a genuinely losable <b>3–5 minute session</b>
+        with a synth music loop; balance set by autopilot and 20-seed stress runs, not by feel.</p>
+      <div class="badges"><span class="badge">Losable by design</span><span class="badge">Measured balance</span>
+        <span class="badge">WebAudio music</span><span class="badge">MRAID</span></div>
+      <div class="cardFoot"><span class="size">60 KB</span>
+        <div class="actions"><button onclick="reload(this)">⟳ Restart</button>
+          <a class="open" href="../butcher-hero/index.html" target="pa-demo-butcher-hero">Open ⤢</a></div></div>
     </div>
   </div>
 </main>
